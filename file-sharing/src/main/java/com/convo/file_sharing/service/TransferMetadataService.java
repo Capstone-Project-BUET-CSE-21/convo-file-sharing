@@ -6,7 +6,6 @@ import com.convo.file_sharing.dto.MetadataResponseDto;
 import com.convo.file_sharing.entity.TransferMetadata;
 import com.convo.file_sharing.exception.NotFoundException;
 import com.convo.file_sharing.repository.TransferMetadataRepository;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
