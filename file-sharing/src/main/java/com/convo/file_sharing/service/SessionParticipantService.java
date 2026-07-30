@@ -4,7 +4,9 @@ import com.convo.file_sharing.dto.ParticipantDto;
 import com.convo.file_sharing.entity.SessionParticipant;
 import com.convo.file_sharing.repository.SessionParticipantRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,14 +23,25 @@ public class SessionParticipantService {
     // screen). NOTE: session_participants is a point-in-time snapshot of who
     // was authorized when the file was shared (per the plan's schema
     // decision) — it deliberately does NOT reflect later-revoked access.
-    // Debashri's plan explicitly flags that "meeting attendance" and
-    // "authorized to hold this specific file" may need to diverge into a
-    // separate table down the line; this method only answers the former
-    // for now.
     public List<ParticipantDto> listParticipants(UUID sessionId) {
         return repository.findBySessionId(sessionId).stream()
                 .map(this::toDto)
                 .toList();
+    }
+
+    // Required by screens/FileSharingTestPage.jsx's registerParticipant()
+    // call. Without this, session_participants can never actually be
+    // written to, so isAuthorizedHop can never return true and the
+    // "authorized" branch of the trace screen is untestable.
+    @Transactional
+    public ParticipantDto addParticipant(UUID sessionId, UUID userId) {
+        SessionParticipant participant = SessionParticipant.builder()
+                .sessionId(sessionId)
+                .userId(userId)
+                .joinedAt(OffsetDateTime.now())
+                .build();
+        SessionParticipant saved = repository.save(participant);
+        return toDto(saved);
     }
 
     private ParticipantDto toDto(SessionParticipant p) {
