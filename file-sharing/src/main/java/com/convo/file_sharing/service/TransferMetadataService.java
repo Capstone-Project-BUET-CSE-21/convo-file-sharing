@@ -122,7 +122,12 @@ public class TransferMetadataService {
                         e.getMimeType(),
                         e.getTimestamp(),
                         e.getPreviousHash(),
-                        e.getContentHash()
+                        e.getContentHash(),
+                        // Added — trace-screen hops need these to do real
+                        // signature re-verification (identity/traceVerification.js
+                        // makeVerifyHop), not just a content-hash sanity check.
+                        e.getFileHash(), 
+                        e.getSignature()
                 ))
                 .toList();
     }
