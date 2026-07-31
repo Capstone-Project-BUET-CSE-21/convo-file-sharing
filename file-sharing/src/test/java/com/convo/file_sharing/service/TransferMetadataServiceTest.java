@@ -4,7 +4,6 @@ import com.convo.file_sharing.dto.MetadataPatchDto;
 import com.convo.file_sharing.dto.MetadataRequestDto;
 import com.convo.file_sharing.dto.MetadataResponseDto;
 import com.convo.file_sharing.entity.TransferMetadata;
-import com.convo.file_sharing.exception.NotFoundException;
 import com.convo.file_sharing.repository.TransferMetadataRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +20,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+// Mockito's any()/ArgumentCaptor.capture() are placeholders that return null
+// at runtime, but JpaRepository's save()/findById() are typed with @NonNull
+// parameters (from @NonNullApi on the repository package). IntelliJ can't
+// see that Mockito substitutes the real argument at call time, so it flags
+// every such call as an unchecked null conversion. Suppressed at the class
+// level since the pattern repeats across every test in this file.
+@SuppressWarnings("null")
 public class TransferMetadataServiceTest {
 
     @Mock
@@ -43,6 +49,8 @@ public class TransferMetadataServiceTest {
         when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
 
         MetadataResponseDto res = service.createPendingTransfer(req);
+
+        assertNotNull(res);
 
         ArgumentCaptor<TransferMetadata> captor = ArgumentCaptor.forClass(TransferMetadata.class);
         verify(repository).save(captor.capture());
@@ -111,7 +119,9 @@ public class TransferMetadataServiceTest {
         when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
 
         MetadataResponseDto res = service.attachHashAndSignature(transferId, patch);
-        
+
+        assertNotNull(res);
+
         ArgumentCaptor<TransferMetadata> captor = ArgumentCaptor.forClass(TransferMetadata.class);
         verify(repository).save(captor.capture());
         TransferMetadata saved = captor.getValue();
