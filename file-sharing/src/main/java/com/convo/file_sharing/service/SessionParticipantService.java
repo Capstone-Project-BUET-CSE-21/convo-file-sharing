@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -40,7 +41,7 @@ public class SessionParticipantService {
                 .userId(userId)
                 .joinedAt(OffsetDateTime.now())
                 .build();
-        SessionParticipant saved = repository.save(participant);
+        SessionParticipant saved = repository.save(Objects.requireNonNull(participant));
         return toDto(saved);
     }
 
