@@ -11,6 +11,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
+@IdClass(PublicKeyId.class)
 @Table(name = "public_keys")
 @Getter
 @Setter
@@ -26,6 +27,7 @@ public class PublicKeyEntity {
     @Column(name = "public_key", nullable = false, columnDefinition = "text")
     private String publicKey;
 
+    @Id
     @Column(name = "algorithm", nullable = false)
     private String algorithm;
 

@@ -32,4 +32,13 @@ public class KeyController {
     public ResponseEntity<KeyResponseDto> get(@PathVariable UUID userId) {
         return ResponseEntity.ok(service.getKey(userId));
     }
+
+    // New: GET /api/keys/{userId}/{algorithm} — fetch a specific algorithm's key
+    // (e.g. ECDH-P256), needed since a user can now have multiple keys.
+    @GetMapping("/{userId}/{algorithm}")
+    public ResponseEntity<KeyResponseDto> getByAlgorithm(
+            @PathVariable UUID userId,
+            @PathVariable String algorithm) {
+        return ResponseEntity.ok(service.getKeyByAlgorithm(userId, algorithm));
+    }
 }

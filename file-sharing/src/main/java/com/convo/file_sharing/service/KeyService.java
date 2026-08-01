@@ -36,11 +36,18 @@ public class KeyService {
         repository.save(entity);
     }
 
-    // Backs Debashri's/Anisa's verification lookups (2.4).
+    // Preserves original behavior: returns the ECDSA signing key for a user.
     public KeyResponseDto getKey(UUID userId) {
+        return getKeyByAlgorithm(userId, "ECDSA-P256");
+    }
+
+    // New: fetch a specific algorithm's key for a user (e.g. ECDH-P256 for encryption).
+    public KeyResponseDto getKeyByAlgorithm(UUID userId, String algorithm) {
         Objects.requireNonNull(userId, "userId must not be null");
-        PublicKeyEntity entity = repository.findById(userId)
-                .orElseThrow(() -> new NotFoundException("No public key registered for user " + userId));
+        Objects.requireNonNull(algorithm, "algorithm must not be null");
+        PublicKeyEntity entity = repository.findByUserIdAndAlgorithm(userId, algorithm)
+                .orElseThrow(() -> new NotFoundException(
+                        "No " + algorithm + " public key registered for user " + userId));
         return new KeyResponseDto(entity.getPublicKey(), entity.getAlgorithm());
     }
 }
