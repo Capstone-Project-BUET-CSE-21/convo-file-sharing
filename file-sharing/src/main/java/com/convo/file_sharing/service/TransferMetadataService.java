@@ -36,7 +36,7 @@ public class TransferMetadataService {
     @Transactional
     public MetadataResponseDto createPendingTransfer(MetadataRequestDto request) {
         String previousHash = request.previousHash();
-        UUID originSessionId = request.sessionId();
+        String originSessionId = request.sessionId();
 
         if (previousHash != null && !previousHash.trim().isEmpty()) {
             TransferMetadata prev = repository.findByFileHash(previousHash)
@@ -123,10 +123,7 @@ public class TransferMetadataService {
                         e.getTimestamp(),
                         e.getPreviousHash(),
                         e.getContentHash(),
-                        // Added — trace-screen hops need these to do real
-                        // signature re-verification (identity/traceVerification.js
-                        // makeVerifyHop), not just a content-hash sanity check.
-                        e.getFileHash(), 
+                        e.getFileHash(),
                         e.getSignature()
                 ))
                 .toList();

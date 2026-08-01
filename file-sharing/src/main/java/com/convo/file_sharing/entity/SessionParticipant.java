@@ -23,8 +23,8 @@ public class SessionParticipant {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name = "session_id", nullable = false)
-    private UUID sessionId;
+    @Column(name = "session_id", nullable = false, length = 64)
+    private String sessionId;
 
     @Column(name = "user_id", nullable = false)
     private UUID userId;

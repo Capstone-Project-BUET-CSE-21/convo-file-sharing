@@ -7,5 +7,5 @@ import java.util.List;
 import java.util.UUID;
 
 public interface SessionParticipantRepository extends JpaRepository<SessionParticipant, UUID> {
-    List<SessionParticipant> findBySessionId(UUID sessionId);
+    List<SessionParticipant> findBySessionId(String sessionId);
 }

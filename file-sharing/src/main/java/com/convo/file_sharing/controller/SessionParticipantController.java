@@ -22,7 +22,7 @@ public class SessionParticipantController {
     }
 
     @GetMapping("/{sessionId}/participants")
-    public ResponseEntity<List<ParticipantDto>> listParticipants(@PathVariable UUID sessionId) {
+    public ResponseEntity<List<ParticipantDto>> listParticipants(@PathVariable String sessionId) {
         return ResponseEntity.ok(service.listParticipants(sessionId));
     }
 
@@ -30,7 +30,7 @@ public class SessionParticipantController {
     // call — was missing from the last commit, causing that call to 404.
     @PostMapping("/{sessionId}/participants")
     public ResponseEntity<ParticipantDto> addParticipant(
-            @PathVariable UUID sessionId,
+            @PathVariable String sessionId,
             @Valid @RequestBody ParticipantRegistrationDto dto) {
         ParticipantDto saved = service.addParticipant(sessionId, dto.userId());
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);

@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Positive;
 import java.util.UUID;
 
 public record MetadataRequestDto(
-        @NotNull UUID sessionId,
+        @NotBlank String sessionId,
         @NotNull UUID senderId,
         @NotBlank String fileName,
         @Positive Long fileSize,

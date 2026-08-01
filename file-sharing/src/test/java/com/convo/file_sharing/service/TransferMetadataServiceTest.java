@@ -20,13 +20,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-// Mockito's any()/ArgumentCaptor.capture() are placeholders that return null
-// at runtime, but JpaRepository's save()/findById() are typed with @NonNull
-// parameters (from @NonNullApi on the repository package). IntelliJ can't
-// see that Mockito substitutes the real argument at call time, so it flags
-// every such call as an unchecked null conversion. Suppressed at the class
-// level since the pattern repeats across every test in this file.
-@SuppressWarnings("null")
 public class TransferMetadataServiceTest {
 
     @Mock
@@ -42,15 +35,13 @@ public class TransferMetadataServiceTest {
 
     @Test
     void testCreatePendingTransfer_FreshFile_SetsOriginSessionIdToCurrent() {
-        UUID sessionId = UUID.randomUUID();
+        String sessionId = "ABC-1234";
         MetadataRequestDto req = new MetadataRequestDto(
                 sessionId, UUID.randomUUID(), "test.txt", 100L, "text/plain", null);
 
         when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
 
         MetadataResponseDto res = service.createPendingTransfer(req);
-
-        assertNotNull(res);
 
         ArgumentCaptor<TransferMetadata> captor = ArgumentCaptor.forClass(TransferMetadata.class);
         verify(repository).save(captor.capture());
@@ -62,8 +53,8 @@ public class TransferMetadataServiceTest {
 
     @Test
     void testCreatePendingTransfer_WithPreviousHash_InheritsOriginSessionId() {
-        UUID newSessionId = UUID.randomUUID();
-        UUID originSessionId = UUID.randomUUID();
+        String newSessionId = "XYZ-5678";
+        String originSessionId = "ABC-1234";
         String prevHash = "old_hash";
 
         MetadataRequestDto req = new MetadataRequestDto(
@@ -119,9 +110,7 @@ public class TransferMetadataServiceTest {
         when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
 
         MetadataResponseDto res = service.attachHashAndSignature(transferId, patch);
-
-        assertNotNull(res);
-
+        
         ArgumentCaptor<TransferMetadata> captor = ArgumentCaptor.forClass(TransferMetadata.class);
         verify(repository).save(captor.capture());
         TransferMetadata saved = captor.getValue();

@@ -12,7 +12,7 @@ import java.util.UUID;
  */
 public record ProvenanceBlock(
         UUID transferId,
-        UUID sessionId,
+        String sessionId,
         UUID senderId,
         String fileName,
         Long fileSize,

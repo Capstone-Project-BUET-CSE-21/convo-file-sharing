@@ -8,7 +8,7 @@ import java.util.UUID;
 // hash, and sign. Don't add/rename fields without updating section 0 for everyone.
 public record MetadataResponseDto(
         UUID transferId,
-        UUID sessionId,
+        String sessionId,
         UUID senderId,
         String fileName,
         Long fileSize,

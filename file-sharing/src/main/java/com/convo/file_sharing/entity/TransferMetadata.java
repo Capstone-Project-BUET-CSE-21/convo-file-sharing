@@ -11,7 +11,13 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "transfer_metadata")
+@Table(
+        name = "transfer_metadata",
+        indexes = @Index(
+                name = "idx_transfer_metadata_content_hash_ts",
+                columnList = "content_hash, timestamp"
+        )
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,8 +29,8 @@ public class TransferMetadata {
     @Column(name = "transfer_id")
     private UUID transferId;
 
-    @Column(name = "session_id", nullable = false)
-    private UUID sessionId;
+    @Column(name = "session_id", nullable = false, length = 64)
+    private String sessionId;
 
     @Column(name = "sender_id", nullable = false)
     private UUID senderId;
@@ -49,8 +55,8 @@ public class TransferMetadata {
     @Column(name = "content_hash")
     private String contentHash;
 
-    @Column(name = "origin_session_id")
-    private UUID originSessionId;
+    @Column(name = "origin_session_id", length = 64)
+    private String originSessionId;
 
     @Column(name = "signature")
     private String signature;

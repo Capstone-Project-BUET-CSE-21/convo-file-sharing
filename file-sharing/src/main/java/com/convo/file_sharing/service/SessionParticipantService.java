@@ -24,7 +24,7 @@ public class SessionParticipantService {
     // screen). NOTE: session_participants is a point-in-time snapshot of who
     // was authorized when the file was shared (per the plan's schema
     // decision) — it deliberately does NOT reflect later-revoked access.
-    public List<ParticipantDto> listParticipants(UUID sessionId) {
+    public List<ParticipantDto> listParticipants(String sessionId) {
         return repository.findBySessionId(sessionId).stream()
                 .map(this::toDto)
                 .toList();
@@ -35,7 +35,7 @@ public class SessionParticipantService {
     // written to, so isAuthorizedHop can never return true and the
     // "authorized" branch of the trace screen is untestable.
     @Transactional
-    public ParticipantDto addParticipant(UUID sessionId, UUID userId) {
+    public ParticipantDto addParticipant(String sessionId, UUID userId) {
         SessionParticipant participant = SessionParticipant.builder()
                 .sessionId(sessionId)
                 .userId(userId)
