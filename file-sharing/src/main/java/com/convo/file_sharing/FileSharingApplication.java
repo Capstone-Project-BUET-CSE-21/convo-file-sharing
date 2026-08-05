@@ -2,10 +2,12 @@ package com.convo.file_sharing;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 import io.github.cdimascio.dotenv.Dotenv;
 
 @SpringBootApplication
+@ConfigurationPropertiesScan
 public class FileSharingApplication {
 
     private static String resolveValue(String key, Dotenv local) {

@@ -2,6 +2,7 @@ package com.convo.file_sharing.controller;
 
 import com.convo.file_sharing.dto.KeyRegistrationDto;
 import com.convo.file_sharing.dto.KeyResponseDto;
+import com.convo.file_sharing.security.CurrentUser;
 import com.convo.file_sharing.service.KeyService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -20,10 +21,11 @@ public class KeyController {
         this.service = service;
     }
 
-    // 3.2: POST /api/keys
+    // 3.2: POST /api/keys — a caller may only register a key for their own
+    // authenticated identity (see KeyService.registerKey).
     @PostMapping
     public ResponseEntity<Void> register(@Valid @RequestBody KeyRegistrationDto dto) {
-        service.registerKey(dto);
+        service.registerKey(dto, CurrentUser.id());
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 

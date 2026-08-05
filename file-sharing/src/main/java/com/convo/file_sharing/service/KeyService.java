@@ -3,6 +3,7 @@ package com.convo.file_sharing.service;
 import com.convo.file_sharing.dto.KeyRegistrationDto;
 import com.convo.file_sharing.dto.KeyResponseDto;
 import com.convo.file_sharing.entity.PublicKeyEntity;
+import com.convo.file_sharing.exception.ForbiddenException;
 import com.convo.file_sharing.exception.NotFoundException;
 import com.convo.file_sharing.repository.PublicKeyRepository;
 import org.springframework.stereotype.Service;
@@ -23,8 +24,15 @@ public class KeyService {
 
     // 3.2 Task 1: register/replace a user's public key, backing Anisa's
     // keypair registration (2.2) — upsert on userId (primary key).
+    // authenticatedUserId comes from the caller's JWT (CurrentUser), never
+    // the request body — without this check, anyone could register (or
+    // silently overwrite) a signing/encryption key for someone else's id.
     @Transactional
-    public void registerKey(KeyRegistrationDto dto) {
+    public void registerKey(KeyRegistrationDto dto, UUID authenticatedUserId) {
+        if (!dto.userId().equals(authenticatedUserId)) {
+            throw new ForbiddenException("You can only register a key for your own account");
+        }
+
         PublicKeyEntity entity = PublicKeyEntity.builder()
                 .userId(dto.userId())
                 .publicKey(dto.publicKey())

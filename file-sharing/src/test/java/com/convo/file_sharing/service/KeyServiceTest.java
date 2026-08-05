@@ -20,8 +20,8 @@ class KeyServiceTest {
     @Test
     void getKey_returnsEcdsaKey_backwardCompatible() {
         UUID userId = UUID.randomUUID();
-        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"));
-        keyService.registerKey(new KeyRegistrationDto(userId, "ecdh-value", "ECDH-P256"));
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"), userId);
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdh-value", "ECDH-P256"), userId);
 
         KeyResponseDto result = keyService.getKey(userId);
 
@@ -32,8 +32,8 @@ class KeyServiceTest {
     @Test
     void getKeyByAlgorithm_returnsEcdhKey() {
         UUID userId = UUID.randomUUID();
-        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"));
-        keyService.registerKey(new KeyRegistrationDto(userId, "ecdh-value", "ECDH-P256"));
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"), userId);
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdh-value", "ECDH-P256"), userId);
 
         KeyResponseDto result = keyService.getKeyByAlgorithm(userId, "ECDH-P256");
 
@@ -43,7 +43,7 @@ class KeyServiceTest {
     @Test
     void getKeyByAlgorithm_missingAlgorithm_throwsNotFound() {
         UUID userId = UUID.randomUUID();
-        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"));
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"), userId);
 
         assertThrows(NotFoundException.class, () -> keyService.getKeyByAlgorithm(userId, "ECDH-P256"));
     }

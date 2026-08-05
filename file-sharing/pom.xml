@@ -18,6 +18,25 @@
 
   <properties>
     <java.version>21</java.version>
+    <!-- spring-boot-starter-parent 3.3.2 manages Mockito 5.11.0, whose
+         bundled Byte Buddy can't instrument classes on JDK 25 (the JVM
+         actually running the build here) — bump to a version with JDK 25
+         support so @MockBean/@Mock-backed tests (KeyControllerTest) don't
+         fail at ApplicationContext startup. Byte Buddy itself must be
+         bumped too, separately: Spring Boot's BOM pins byte-buddy.version
+         on its own (not derived from mockito.version), and dependency
+         management wins over whatever mockito-core's own POM requests —
+         so leaving it unset silently keeps the old 1.14.18 in place even
+         after mockito-core is upgraded. -->
+    <mockito.version>5.20.0</mockito.version>
+    <byte-buddy.version>1.17.8</byte-buddy.version>
+    <!-- Same root cause, different symptom: spring-boot-starter-parent
+         3.3.2 manages Lombok 1.18.34, which doesn't hook JDK 25's javac
+         internals — @Builder/@Getter/@Setter methods silently don't get
+         generated on a clean build (incremental builds masked this by
+         reusing pre-existing .class files from before this project was
+         ever built on JDK 25). -->
+    <lombok.version>1.18.44</lombok.version>
   </properties>
 
   <dependencies>
@@ -53,6 +72,24 @@
           <groupId>com.fasterxml.jackson.core</groupId>
           <artifactId>jackson-databind</artifactId>
       </dependency>
+      <!-- verifies the HS-signed JWTs issued by convo-backend (shared app.jwt.secret) -->
+      <dependency>
+          <groupId>io.jsonwebtoken</groupId>
+          <artifactId>jjwt-api</artifactId>
+          <version>0.12.6</version>
+      </dependency>
+      <dependency>
+          <groupId>io.jsonwebtoken</groupId>
+          <artifactId>jjwt-impl</artifactId>
+          <version>0.12.6</version>
+          <scope>runtime</scope>
+      </dependency>
+      <dependency>
+          <groupId>io.jsonwebtoken</groupId>
+          <artifactId>jjwt-jackson</artifactId>
+          <version>0.12.6</version>
+          <scope>runtime</scope>
+      </dependency>
       <!-- auto-loads a .env file at project root into Spring's Environment,
           so ${DB_HOST}, ${DB_USER} etc. in application.yml resolve from it
           without any code changes -->
@@ -64,6 +101,14 @@
       <dependency>
           <groupId>org.projectlombok</groupId>
           <artifactId>lombok</artifactId>
+          <optional>true</optional>
+      </dependency>
+      <!-- generates META-INF/spring-configuration-metadata.json for
+          @ConfigurationProperties classes (see security/JwtProperties), so
+          the IDE stops flagging app.jwt.secret as an unknown property -->
+      <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-configuration-processor</artifactId>
           <optional>true</optional>
       </dependency>
       <dependency>
@@ -83,6 +128,33 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <!-- Root cause: with this many jars on the compile classpath and
+               no -processorpath given, javac's implicit classpath-based
+               annotation-processor discovery silently fails to pick up
+               Lombok's processor (confirmed by reproducing Maven's exact
+               forked javac command line by hand — it only succeeds once
+               -processorpath is passed explicitly). Declaring the
+               processors here is also just the standard way to pair
+               Lombok with another processor (spring-boot-configuration-
+               processor) in the same build. -->
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>${lombok.version}</version>
+            </path>
+            <path>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-configuration-processor</artifactId>
+              <version>${project.parent.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
       </plugin>
     </plugins>
   </build>

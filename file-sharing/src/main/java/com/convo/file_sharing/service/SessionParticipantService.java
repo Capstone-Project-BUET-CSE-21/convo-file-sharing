@@ -2,6 +2,7 @@ package com.convo.file_sharing.service;
 
 import com.convo.file_sharing.dto.ParticipantDto;
 import com.convo.file_sharing.entity.SessionParticipant;
+import com.convo.file_sharing.exception.ForbiddenException;
 import com.convo.file_sharing.repository.SessionParticipantRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,12 +31,15 @@ public class SessionParticipantService {
                 .toList();
     }
 
-    // Required by screens/FileSharingTestPage.jsx's registerParticipant()
-    // call. Without this, session_participants can never actually be
-    // written to, so isAuthorizedHop can never return true and the
-    // "authorized" branch of the trace screen is untestable.
+    // A user can only assert their own presence in a session — userId must
+    // match the JWT-derived authenticatedUserId, not an arbitrary value
+    // from the request body.
     @Transactional
-    public ParticipantDto addParticipant(String sessionId, UUID userId) {
+    public ParticipantDto addParticipant(String sessionId, UUID userId, UUID authenticatedUserId) {
+        if (!userId.equals(authenticatedUserId)) {
+            throw new ForbiddenException("You can only register your own presence in a session");
+        }
+
         SessionParticipant participant = SessionParticipant.builder()
                 .sessionId(sessionId)
                 .userId(userId)
