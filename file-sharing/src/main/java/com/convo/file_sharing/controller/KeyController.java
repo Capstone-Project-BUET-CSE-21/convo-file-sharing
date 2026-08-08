@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -35,12 +36,23 @@ public class KeyController {
         return ResponseEntity.ok(service.getKey(userId));
     }
 
-    // New: GET /api/keys/{userId}/{algorithm} — fetch a specific algorithm's key
-    // (e.g. ECDH-P256), needed since a user can now have multiple keys.
+    // GET /api/keys/{userId}/{algorithm} — the user's CURRENT key for this
+    // algorithm (most recently registered). Used where a single live key is
+    // wanted, e.g. encrypting to a recipient's current ECDH key.
     @GetMapping("/{userId}/{algorithm}")
     public ResponseEntity<KeyResponseDto> getByAlgorithm(
             @PathVariable UUID userId,
             @PathVariable String algorithm) {
         return ResponseEntity.ok(service.getKeyByAlgorithm(userId, algorithm));
+    }
+
+    // GET /api/keys/{userId}/{algorithm}/all — every key the user has ever
+    // registered for this algorithm (newest first). The receive-side verifier
+    // tries each so a signature made with a since-rotated key still verifies.
+    @GetMapping("/{userId}/{algorithm}/all")
+    public ResponseEntity<List<KeyResponseDto>> getAllByAlgorithm(
+            @PathVariable UUID userId,
+            @PathVariable String algorithm) {
+        return ResponseEntity.ok(service.getAllKeysByAlgorithm(userId, algorithm));
     }
 }

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,5 +47,32 @@ class KeyServiceTest {
         keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"), userId);
 
         assertThrows(NotFoundException.class, () -> keyService.getKeyByAlgorithm(userId, "ECDH-P256"));
+    }
+
+    @Test
+    void registerKey_isAdditive_keepsHistory_latestIsCurrent() throws InterruptedException {
+        UUID userId = UUID.randomUUID();
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-v1", "ECDSA-P256"), userId);
+        Thread.sleep(2); // guarantee a strictly later created_at so ordering is deterministic
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-v2", "ECDSA-P256"), userId);
+
+        // Current key = the most recently registered one.
+        assertEquals("ecdsa-v2", keyService.getKey(userId).publicKey());
+
+        // History keeps both, newest first — this is what lets a signature made
+        // with the older key still verify after rotation.
+        List<KeyResponseDto> all = keyService.getAllKeysByAlgorithm(userId, "ECDSA-P256");
+        assertEquals(2, all.size());
+        assertEquals("ecdsa-v2", all.get(0).publicKey());
+        assertEquals("ecdsa-v1", all.get(1).publicKey());
+    }
+
+    @Test
+    void registerKey_sameKeyTwice_isDeduped() {
+        UUID userId = UUID.randomUUID();
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"), userId);
+        keyService.registerKey(new KeyRegistrationDto(userId, "ecdsa-value", "ECDSA-P256"), userId);
+
+        assertEquals(1, keyService.getAllKeysByAlgorithm(userId, "ECDSA-P256").size());
     }
 }
