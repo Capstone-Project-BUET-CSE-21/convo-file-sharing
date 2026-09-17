@@ -8,6 +8,7 @@ import com.convo.file_sharing.entity.TransferMetadata;
 import com.convo.file_sharing.exception.ForbiddenException;
 import com.convo.file_sharing.repository.ChainRootRepository;
 import com.convo.file_sharing.repository.TransferMetadataRepository;
+import com.convo.file_sharing.repository.TransferRecipientRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -16,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,6 +33,9 @@ public class TransferMetadataServiceTest {
     @Mock
     private ChainRootRepository chainRootRepository;
 
+    @Mock
+    private TransferRecipientRepository recipientRepository;
+
     @InjectMocks
     private TransferMetadataService service;
 
@@ -44,7 +49,7 @@ public class TransferMetadataServiceTest {
         String sessionId = "ABC-1234";
         UUID senderId = UUID.randomUUID();
         MetadataRequestDto req = new MetadataRequestDto(
-                sessionId, senderId, "test.txt", 100L, "text/plain", null);
+                sessionId, senderId, "test.txt", 100L, "text/plain", null, List.of(UUID.randomUUID()));
 
         when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -61,7 +66,7 @@ public class TransferMetadataServiceTest {
     @Test
     void testCreatePendingTransfer_SenderIdNotAuthenticatedUser_ThrowsForbidden() {
         MetadataRequestDto req = new MetadataRequestDto(
-                "ABC-1234", UUID.randomUUID(), "test.txt", 100L, "text/plain", null);
+                "ABC-1234", UUID.randomUUID(), "test.txt", 100L, "text/plain", null, List.of(UUID.randomUUID()));
 
         assertThrows(ForbiddenException.class, () -> service.createPendingTransfer(req, UUID.randomUUID()));
         verifyNoInteractions(repository);
@@ -75,7 +80,7 @@ public class TransferMetadataServiceTest {
         UUID senderId = UUID.randomUUID();
 
         MetadataRequestDto req = new MetadataRequestDto(
-                newSessionId, senderId, "test.txt", 100L, "text/plain", prevHash);
+                newSessionId, senderId, "test.txt", 100L, "text/plain", prevHash, List.of(UUID.randomUUID()));
 
         TransferMetadata prevEntity = new TransferMetadata();
         prevEntity.setOriginSessionId(originSessionId);

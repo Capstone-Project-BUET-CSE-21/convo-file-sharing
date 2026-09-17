@@ -5,10 +5,12 @@ import com.convo.file_sharing.dto.MetadataRequestDto;
 import com.convo.file_sharing.dto.MetadataResponseDto;
 import com.convo.file_sharing.entity.ChainRoot;
 import com.convo.file_sharing.entity.TransferMetadata;
+import com.convo.file_sharing.entity.TransferRecipient;
 import com.convo.file_sharing.exception.ForbiddenException;
 import com.convo.file_sharing.exception.NotFoundException;
 import com.convo.file_sharing.repository.ChainRootRepository;
 import com.convo.file_sharing.repository.TransferMetadataRepository;
+import com.convo.file_sharing.repository.TransferRecipientRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,19 +18,27 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class TransferMetadataService {
 
     private final TransferMetadataRepository repository;
     private final ChainRootRepository chainRootRepository;
+    private final TransferRecipientRepository recipientRepository;
 
-    public TransferMetadataService(TransferMetadataRepository repository, ChainRootRepository chainRootRepository) {
+    public TransferMetadataService(
+            TransferMetadataRepository repository,
+            ChainRootRepository chainRootRepository,
+            TransferRecipientRepository recipientRepository) {
         this.repository = repository;
         this.chainRootRepository = chainRootRepository;
+        this.recipientRepository = recipientRepository;
     }
 
     /**
@@ -77,7 +87,21 @@ public class TransferMetadataService {
 
         Objects.requireNonNull(entity, "entity must not be null");
         TransferMetadata saved = repository.save(entity);
-        return toResponse(saved);
+
+        // Record who this hop's sender is actually handing the file to.
+        // Written once, immutable afterwards — this is the ACL a later
+        // hop's authorization check is measured against (see
+        // makeIsAuthorizedHop in the frontend), not session attendance.
+        List<UUID> recipientIds = List.copyOf(request.recipients());
+        List<TransferRecipient> recipientRows = recipientIds.stream()
+                .map(recipientId -> TransferRecipient.builder()
+                        .transferId(saved.getTransferId())
+                        .recipientId(recipientId)
+                        .build())
+                .toList();
+        recipientRepository.saveAll(recipientRows);
+
+        return toResponse(saved, recipientIds);
     }
 
     /**
@@ -155,7 +179,20 @@ public class TransferMetadataService {
     }
 
     public List<com.convo.file_sharing.dto.ChainHistoryResponseDto> getChainHistory(String contentHash) {
-        return repository.findByContentHashOrderByTimestampAsc(contentHash).stream()
+        List<TransferMetadata> entries = repository.findByContentHashOrderByTimestampAsc(contentHash);
+
+        // One batch query for every hop's recipients instead of N+1 — chains
+        // are short in practice, but there's no reason to pay per-hop
+        // round trips for something known up front.
+        List<UUID> transferIds = entries.stream().map(TransferMetadata::getTransferId).toList();
+        Map<UUID, List<UUID>> recipientsByTransferId = transferIds.isEmpty()
+                ? Collections.emptyMap()
+                : recipientRepository.findByTransferIdIn(transferIds).stream()
+                        .collect(Collectors.groupingBy(
+                                TransferRecipient::getTransferId,
+                                Collectors.mapping(TransferRecipient::getRecipientId, Collectors.toList())));
+
+        return entries.stream()
                 .map(e -> new com.convo.file_sharing.dto.ChainHistoryResponseDto(
                         e.getTransferId(),
                         e.getSessionId(),
@@ -168,12 +205,20 @@ public class TransferMetadataService {
                         e.getPreviousHash(),
                         e.getContentHash(),
                         e.getFileHash(),
-                        e.getSignature()
+                        e.getSignature(),
+                        recipientsByTransferId.getOrDefault(e.getTransferId(), Collections.emptyList())
                 ))
                 .toList();
     }
 
     private MetadataResponseDto toResponse(TransferMetadata e) {
+        List<UUID> recipients = recipientRepository.findByTransferId(e.getTransferId()).stream()
+                .map(TransferRecipient::getRecipientId)
+                .toList();
+        return toResponse(e, recipients);
+    }
+
+    private MetadataResponseDto toResponse(TransferMetadata e, List<UUID> recipients) {
         return new MetadataResponseDto(
                 e.getTransferId(),
                 e.getSessionId(),
@@ -182,7 +227,8 @@ public class TransferMetadataService {
                 e.getFileSize(),
                 e.getMimeType(),
                 e.getTimestamp(),
-                e.getPreviousHash()
+                e.getPreviousHash(),
+                recipients
         );
     }
 }
