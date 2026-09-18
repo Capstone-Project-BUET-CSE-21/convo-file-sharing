@@ -33,7 +33,7 @@ class KeyControllerTest {
         when(service.getKeyByAlgorithm(userId, "ECDH-P256"))
                 .thenReturn(new KeyResponseDto("ecdh-dummy-value", "ECDH-P256"));
 
-        mockMvc.perform(get("/api/keys/{userId}/{algorithm}", userId, "ECDH-P256"))
+        mockMvc.perform(get("/api/file-sharing/keys/{userId}/{algorithm}", userId, "ECDH-P256"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.publicKey").value("ecdh-dummy-value"))
                 .andExpect(jsonPath("$.algorithm").value("ECDH-P256"));
@@ -45,7 +45,7 @@ class KeyControllerTest {
         when(service.getKeyByAlgorithm(userId, "ECDH-P256"))
                 .thenThrow(new NotFoundException("No ECDH-P256 public key registered for user " + userId));
 
-        mockMvc.perform(get("/api/keys/{userId}/{algorithm}", userId, "ECDH-P256"))
+        mockMvc.perform(get("/api/file-sharing/keys/{userId}/{algorithm}", userId, "ECDH-P256"))
                 .andExpect(status().isNotFound());
     }
 }

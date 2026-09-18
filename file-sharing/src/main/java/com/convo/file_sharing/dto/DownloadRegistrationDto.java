@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.util.UUID;
 
-// POST /api/sessions/{sessionId}/downloads body. userId must match the
+// POST /api/file-sharing/sessions/{sessionId}/downloads body. userId must match the
 // caller's own authenticated identity (see FileDownloadService).
 public record DownloadRegistrationDto(
         @NotNull UUID userId,

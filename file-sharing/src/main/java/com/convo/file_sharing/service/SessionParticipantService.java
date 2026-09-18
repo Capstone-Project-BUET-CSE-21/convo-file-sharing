@@ -23,7 +23,7 @@ import java.util.UUID;
 // service holds a copy of another service's data or reaches into its
 // tables directly (even where they happen to share a physical database) —
 // so this asks convo-backend for it instead, the same way this service
-// already asks convo-backend for display names (POST /api/users/batch).
+// already asks convo-backend for display names (POST /api/backend/users/batch).
 // No write path is needed here any more: convo-backend's own
 // POST /api/backend/meeting-entry already creates the meeting_user row
 // before a client ever reaches this service.
@@ -46,7 +46,7 @@ public class SessionParticipantService {
     public List<ParticipantDto> listParticipants(String sessionId) {
         try {
             BackendParticipant[] participants = restClient.get()
-                    .uri("/api/internal/meetings/{meetingCode}/participants", sessionId)
+                    .uri("/api/backend/internal/meetings/{meetingCode}/participants", sessionId)
                     .header("X-Internal-Service-Key", properties.getServiceKey())
                     .retrieve()
                     .body(BackendParticipant[].class);

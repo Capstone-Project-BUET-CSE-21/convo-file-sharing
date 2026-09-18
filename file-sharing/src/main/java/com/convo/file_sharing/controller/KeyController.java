@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/keys")
+@RequestMapping("/api/file-sharing/keys")
 public class KeyController {
 
     private final KeyService service;
@@ -22,23 +22,23 @@ public class KeyController {
         this.service = service;
     }
 
-    // 3.2: POST /api/keys — a caller may only register a key for their own
-    // authenticated identity (see KeyService.registerKey).
+    // 3.2: POST /api/file-sharing/keys — a caller may only register a key for
+    // their own authenticated identity (see KeyService.registerKey).
     @PostMapping
     public ResponseEntity<Void> register(@Valid @RequestBody KeyRegistrationDto dto) {
         service.registerKey(dto, CurrentUser.id());
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
-    // 3.2: GET /api/keys/{userId}
+    // 3.2: GET /api/file-sharing/keys/{userId}
     @GetMapping("/{userId}")
     public ResponseEntity<KeyResponseDto> get(@PathVariable UUID userId) {
         return ResponseEntity.ok(service.getKey(userId));
     }
 
-    // GET /api/keys/{userId}/{algorithm} — the user's CURRENT key for this
-    // algorithm (most recently registered). Used where a single live key is
-    // wanted, e.g. encrypting to a recipient's current ECDH key.
+    // GET /api/file-sharing/keys/{userId}/{algorithm} — the user's CURRENT
+    // key for this algorithm (most recently registered). Used where a single
+    // live key is wanted, e.g. encrypting to a recipient's current ECDH key.
     @GetMapping("/{userId}/{algorithm}")
     public ResponseEntity<KeyResponseDto> getByAlgorithm(
             @PathVariable UUID userId,
@@ -46,9 +46,10 @@ public class KeyController {
         return ResponseEntity.ok(service.getKeyByAlgorithm(userId, algorithm));
     }
 
-    // GET /api/keys/{userId}/{algorithm}/all — every key the user has ever
-    // registered for this algorithm (newest first). The receive-side verifier
-    // tries each so a signature made with a since-rotated key still verifies.
+    // GET /api/file-sharing/keys/{userId}/{algorithm}/all — every key the
+    // user has ever registered for this algorithm (newest first). The
+    // receive-side verifier tries each so a signature made with a
+    // since-rotated key still verifies.
     @GetMapping("/{userId}/{algorithm}/all")
     public ResponseEntity<List<KeyResponseDto>> getAllByAlgorithm(
             @PathVariable UUID userId,

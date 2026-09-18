@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/sessions")
+@RequestMapping("/api/file-sharing/sessions")
 public class SessionParticipantController {
 
     private final SessionParticipantService service;

@@ -17,7 +17,7 @@ import lombok.Setter;
  * One row per content hash that has ever claimed the root (previousHash ==
  * null) of a provenance chain. contentHash is the primary key, so the
  * database itself — not a check-then-act SELECT — is what makes "only one
- * root per content hash" hold under concurrent PATCH /api/transfer/metadata
+ * root per content hash" hold under concurrent PATCH /api/file-sharing/transfer/metadata
  * requests. See TransferMetadataService.claimChainRoot.
  *
  * transfer is a real foreign key (transfer_id -> transfer_metadata.transfer_id)

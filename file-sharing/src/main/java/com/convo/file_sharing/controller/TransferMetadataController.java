@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/transfer/metadata")
+@RequestMapping("/api/file-sharing/transfer/metadata")
 public class TransferMetadataController {
 
     private final TransferMetadataService service;
@@ -22,16 +22,18 @@ public class TransferMetadataController {
         this.service = service;
     }
 
-    // 3.1: POST /api/transfer/metadata — senderId in the body must match the
-    // caller's own authenticated identity (see TransferMetadataService).
+    // 3.1: POST /api/file-sharing/transfer/metadata — senderId in the body
+    // must match the caller's own authenticated identity (see
+    // TransferMetadataService).
     @PostMapping
     public ResponseEntity<MetadataResponseDto> create(@Valid @RequestBody MetadataRequestDto request) {
         MetadataResponseDto response = service.createPendingTransfer(request, CurrentUser.id());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // 3.1 Task 3: PATCH /api/transfer/metadata/{transferId} — only the
-    // sender who created this pending row may attach its hash/signature.
+    // 3.1 Task 3: PATCH /api/file-sharing/transfer/metadata/{transferId} —
+    // only the sender who created this pending row may attach its
+    // hash/signature.
     @PatchMapping("/{transferId}")
     public ResponseEntity<MetadataResponseDto> attachHashAndSignature(
             @PathVariable UUID transferId,

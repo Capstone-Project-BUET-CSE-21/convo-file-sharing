@@ -116,7 +116,7 @@ public class TransferMetadataService {
     }
 
     /**
-     * 3.1 Task 3, follow-up call: PATCH /api/transfer/metadata/{transferId}.
+     * 3.1 Task 3, follow-up call: PATCH /api/file-sharing/transfer/metadata/{transferId}.
      * The client has now built the signed block per sections 0.3/0.4 and
      * posts fileHash + signature back; we update the pending row rather
      * than creating a new one, so transfer_metadata stays the single

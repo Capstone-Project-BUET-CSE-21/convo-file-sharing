@@ -11,12 +11,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-// No class-level @RequestMapping: the two endpoints here don't share a URL
-// prefix by design — recording a download is scoped under the session it
-// happened in (mirrors SessionParticipantController's shape), while
-// listing downloads is keyed by contentHash alone, independent of any one
-// session, mirroring how getChainHistory works off contentHash too.
+// Beyond the shared /api/file-sharing service prefix, these two endpoints
+// don't share a deeper URL prefix by design — recording a download is
+// scoped under the session it happened in (mirrors
+// SessionParticipantController's shape), while listing downloads is keyed
+// by contentHash alone, independent of any one session, mirroring how
+// getChainHistory works off contentHash too.
 @RestController
+@RequestMapping("/api/file-sharing")
 public class FileDownloadController {
 
     private final FileDownloadService service;
@@ -27,7 +29,7 @@ public class FileDownloadController {
 
     // userId in the body must match the caller's own authenticated
     // identity — see FileDownloadService.recordDownload.
-    @PostMapping("/api/sessions/{sessionId}/downloads")
+    @PostMapping("/sessions/{sessionId}/downloads")
     public ResponseEntity<DownloadRecordDto> recordDownload(
             @PathVariable String sessionId,
             @Valid @RequestBody DownloadRegistrationDto request) {
@@ -35,7 +37,7 @@ public class FileDownloadController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/api/downloads/{contentHash}")
+    @GetMapping("/downloads/{contentHash}")
     public ResponseEntity<List<DownloadRecordDto>> listDownloads(@PathVariable String contentHash) {
         return ResponseEntity.ok(service.listDownloads(contentHash));
     }

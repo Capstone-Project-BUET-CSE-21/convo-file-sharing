@@ -3,7 +3,7 @@
 # Run this AFTER: mvn spring-boot:run (with your real .env values set)
 #
 # You need a real session_id to test against, since there's no
-# POST /api/sessions endpoint in this manual — insert one directly:
+# POST /api/file-sharing/sessions endpoint in this manual — insert one directly:
 #
 #   insert into sessions default values returning session_id;
 #
@@ -15,16 +15,16 @@ BASE_URL="http://localhost:8082"
 SESSION_ID="6fcf3caa-a69f-4d65-bd8d-e40a6496ded2"
 SENDER_ID="$(uuidgen)"
 
-echo "== 1. Register a public key (3.2 POST /api/keys) =="
-curl -s -w "\nHTTP %{http_code}\n" -X POST "$BASE_URL/api/keys" \
+echo "== 1. Register a public key (3.2 POST /api/file-sharing/keys) =="
+curl -s -w "\nHTTP %{http_code}\n" -X POST "$BASE_URL/api/file-sharing/keys" \
   -H "Content-Type: application/json" \
   -d "{\"userId\":\"$SENDER_ID\",\"publicKey\":\"BASE64_ENCODED_PUBLIC_KEY_HERE\",\"algorithm\":\"ECDSA-P256\"}"
 
-echo -e "\n== 2. Look up that key (3.2 GET /api/keys/{userId}) =="
-curl -s -w "\nHTTP %{http_code}\n" "$BASE_URL/api/keys/$SENDER_ID"
+echo -e "\n== 2. Look up that key (3.2 GET /api/file-sharing/keys/{userId}) =="
+curl -s -w "\nHTTP %{http_code}\n" "$BASE_URL/api/file-sharing/keys/$SENDER_ID"
 
 echo -e "\n== 3. Create first transfer in session (3.1 POST) — expect previousHash: null =="
-RESPONSE=$(curl -s -X POST "$BASE_URL/api/transfer/metadata" \
+RESPONSE=$(curl -s -X POST "$BASE_URL/api/file-sharing/transfer/metadata" \
   -H "Content-Type: application/json" \
   -d "{\"sessionId\":\"$SESSION_ID\",\"senderId\":\"$SENDER_ID\",\"fileName\":\"first.txt\",\"fileSize\":100,\"mimeType\":\"text/plain\"}")
 echo "$RESPONSE"
@@ -32,22 +32,22 @@ TRANSFER_ID_1=$(echo "$RESPONSE" | grep -o '"transferId":"[^"]*"' | cut -d'"' -f
 echo "Captured transferId: $TRANSFER_ID_1"
 
 echo -e "\n== 4. PATCH that transfer with fileHash/signature (3.1 Task 3) =="
-curl -s -w "\nHTTP %{http_code}\n" -X PATCH "$BASE_URL/api/transfer/metadata/$TRANSFER_ID_1" \
+curl -s -w "\nHTTP %{http_code}\n" -X PATCH "$BASE_URL/api/file-sharing/transfer/metadata/$TRANSFER_ID_1" \
   -H "Content-Type: application/json" \
   -d '{"fileHash":"deadbeefcafe","signature":"c2lnbmF0dXJlYmFzZTY0"}'
 
 echo -e "\n== 5. PATCH a bogus transferId — expect HTTP 404 =="
-curl -s -w "\nHTTP %{http_code}\n" -X PATCH "$BASE_URL/api/transfer/metadata/$(uuidgen)" \
+curl -s -w "\nHTTP %{http_code}\n" -X PATCH "$BASE_URL/api/file-sharing/transfer/metadata/$(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"fileHash":"deadbeef","signature":"c2ln"}'
 
 echo -e "\n== 6. Create a SECOND transfer, same session — expect previousHash populated (not null) =="
-curl -s -w "\nHTTP %{http_code}\n" -X POST "$BASE_URL/api/transfer/metadata" \
+curl -s -w "\nHTTP %{http_code}\n" -X POST "$BASE_URL/api/file-sharing/transfer/metadata" \
   -H "Content-Type: application/json" \
   -d "{\"sessionId\":\"$SESSION_ID\",\"senderId\":\"$SENDER_ID\",\"fileName\":\"second.txt\",\"fileSize\":200,\"mimeType\":\"text/plain\"}"
 
 echo -e "\n== 7. Missing required field — expect HTTP 400 =="
-curl -s -w "\nHTTP %{http_code}\n" -X POST "$BASE_URL/api/transfer/metadata" \
+curl -s -w "\nHTTP %{http_code}\n" -X POST "$BASE_URL/api/file-sharing/transfer/metadata" \
   -H "Content-Type: application/json" \
   -d "{\"sessionId\":\"$SESSION_ID\",\"senderId\":\"$SENDER_ID\",\"fileSize\":200,\"mimeType\":\"text/plain\"}"
 
