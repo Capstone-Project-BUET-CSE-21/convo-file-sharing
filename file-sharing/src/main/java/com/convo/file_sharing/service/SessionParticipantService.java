@@ -1,55 +1,71 @@
 package com.convo.file_sharing.service;
 
+import com.convo.file_sharing.config.InternalServiceProperties;
 import com.convo.file_sharing.dto.ParticipantDto;
-import com.convo.file_sharing.entity.SessionParticipant;
-import com.convo.file_sharing.exception.ForbiddenException;
-import com.convo.file_sharing.repository.SessionParticipantRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
+// Backs the trace screen's isAuthorizedHop root-hop check (identity/
+// traceVerification.js): "was this sender actually a participant of the
+// session they claim to have first shared from?"
+//
+// There used to be a session_participants table here, written by an
+// explicit client-side POST the moment a user joined a meeting — a
+// duplicate of what convo-backend's meeting_user table already records
+// from the same join event, kept in sync by nothing but the frontend
+// remembering to call both endpoints. Per the team's design decision, no
+// service holds a copy of another service's data or reaches into its
+// tables directly (even where they happen to share a physical database) —
+// so this asks convo-backend for it instead, the same way this service
+// already asks convo-backend for display names (POST /api/users/batch).
+// No write path is needed here any more: convo-backend's own
+// POST /api/backend/meeting-entry already creates the meeting_user row
+// before a client ever reaches this service.
 @Service
 public class SessionParticipantService {
 
-    private final SessionParticipantRepository repository;
+    private final RestClient restClient;
+    private final InternalServiceProperties properties;
 
-    public SessionParticipantService(SessionParticipantRepository repository) {
-        this.repository = repository;
-    }
-
-    // Backs Debashri's authorized/unauthorized-per-hop check (5.3 / trace
-    // screen). NOTE: session_participants is a point-in-time snapshot of who
-    // was authorized when the file was shared (per the plan's schema
-    // decision) — it deliberately does NOT reflect later-revoked access.
-    public List<ParticipantDto> listParticipants(String sessionId) {
-        return repository.findBySessionId(sessionId).stream()
-                .map(this::toDto)
-                .toList();
-    }
-
-    // A user can only assert their own presence in a session — userId must
-    // match the JWT-derived authenticatedUserId, not an arbitrary value
-    // from the request body.
-    @Transactional
-    public ParticipantDto addParticipant(String sessionId, UUID userId, UUID authenticatedUserId) {
-        if (!userId.equals(authenticatedUserId)) {
-            throw new ForbiddenException("You can only register your own presence in a session");
-        }
-
-        SessionParticipant participant = SessionParticipant.builder()
-                .sessionId(sessionId)
-                .userId(userId)
-                .joinedAt(OffsetDateTime.now())
+    public SessionParticipantService(InternalServiceProperties properties) {
+        this.properties = properties;
+        this.restClient = RestClient.builder()
+                .baseUrl(properties.getBackendBaseUrl())
                 .build();
-        SessionParticipant saved = repository.save(Objects.requireNonNull(participant));
-        return toDto(saved);
     }
 
-    private ParticipantDto toDto(SessionParticipant p) {
-        return new ParticipantDto(p.getUserId(), p.getJoinedAt());
+    // convo-backend's InternalMeetingController response shape.
+    private record BackendParticipant(UUID userId, Instant joinedAt) {}
+
+    public List<ParticipantDto> listParticipants(String sessionId) {
+        try {
+            BackendParticipant[] participants = restClient.get()
+                    .uri("/api/internal/meetings/{meetingCode}/participants", sessionId)
+                    .header("X-Internal-Service-Key", properties.getServiceKey())
+                    .retrieve()
+                    .body(BackendParticipant[].class);
+
+            if (participants == null) {
+                return List.of();
+            }
+            return List.of(participants).stream()
+                    .map(p -> new ParticipantDto(p.userId(), p.joinedAt().atOffset(ZoneOffset.UTC)))
+                    .toList();
+        } catch (RestClientResponseException e) {
+            if (e.getStatusCode().value() == 404) {
+                // Meeting code convo-backend has never heard of — no
+                // participants, not an error (see isAuthorizedHop, which
+                // treats "no participants" and "lookup failed" the same:
+                // fail closed either way).
+                return List.of();
+            }
+            throw e;
+        }
     }
 }

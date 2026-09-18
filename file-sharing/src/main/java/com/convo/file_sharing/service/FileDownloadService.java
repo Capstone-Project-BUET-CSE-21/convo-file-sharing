@@ -27,9 +27,8 @@ public class FileDownloadService {
     /**
      * A user can only record their own download — userId must match the
      * JWT-derived authenticatedUserId, not an arbitrary value from the
-     * request body. Same ownership rule as
-     * SessionParticipantService.addParticipant and every other write in
-     * this service; without it, anyone could log a download against a
+     * request body. Same ownership rule as every other write in this
+     * service; without it, anyone could log a download against a
      * different participant's identity.
      *
      * Every call inserts a new row rather than upserting one row per

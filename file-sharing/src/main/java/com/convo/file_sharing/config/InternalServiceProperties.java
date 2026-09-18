@@ -1,0 +1,48 @@
+package com.convo.file_sharing.config;
+
+import jakarta.annotation.PostConstruct;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+// Config for calling convo-backend's internal, server-to-server API
+// (InternalMeetingController) — see SessionParticipantService. serviceKey
+// must match convo-backend's own app.internal.service-key exactly; no
+// fallback default, same reasoning as convo-backend's own
+// InternalServiceProperties (fail loudly at startup rather than silently
+// sending an empty/guessable header).
+@ConfigurationProperties(prefix = "app.internal")
+public class InternalServiceProperties {
+
+    private String serviceKey;
+    private String backendBaseUrl;
+
+    @PostConstruct
+    void validate() {
+        if (serviceKey == null || serviceKey.isBlank()) {
+            throw new IllegalStateException(
+                    "app.internal.service-key (INTERNAL_SERVICE_KEY) must be set — "
+                            + "it authenticates this service's calls to convo-backend's internal API, "
+                            + "and must match convo-backend's own app.internal.service-key.");
+        }
+        if (backendBaseUrl == null || backendBaseUrl.isBlank()) {
+            throw new IllegalStateException(
+                    "app.internal.backend-base-url (CONVO_BACKEND_URL) must be set — "
+                            + "it's where this service sends its internal API calls to convo-backend.");
+        }
+    }
+
+    public String getServiceKey() {
+        return serviceKey;
+    }
+
+    public void setServiceKey(String serviceKey) {
+        this.serviceKey = serviceKey;
+    }
+
+    public String getBackendBaseUrl() {
+        return backendBaseUrl;
+    }
+
+    public void setBackendBaseUrl(String backendBaseUrl) {
+        this.backendBaseUrl = backendBaseUrl;
+    }
+}

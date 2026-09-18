@@ -9,9 +9,9 @@ import java.util.UUID;
 
 public interface TransferRecipientRepository extends JpaRepository<TransferRecipient, UUID> {
 
-    List<TransferRecipient> findByTransferId(UUID transferId);
+    List<TransferRecipient> findByTransfer_TransferId(UUID transferId);
 
     // Batch fetch for a whole chain history response, so getChainHistory
     // doesn't run one recipients query per hop.
-    List<TransferRecipient> findByTransferIdIn(Collection<UUID> transferIds);
+    List<TransferRecipient> findByTransfer_TransferIdIn(Collection<UUID> transferIds);
 }

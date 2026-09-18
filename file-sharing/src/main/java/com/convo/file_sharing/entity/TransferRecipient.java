@@ -15,6 +15,11 @@ import java.util.UUID;
 // a forwarded hop's sender against, instead of session_participants —
 // "was this sender someone the *previous holder* actually sent this file
 // to," not just "was this sender in the same meeting at some point."
+//
+// transfer is a real foreign key (transfer_id -> transfer_metadata.transfer_id)
+// — same-service reference, enforced at the database level. recipientId
+// stays a plain column: it points at convo-backend's users, a different
+// service, which this service deliberately never holds a real FK into.
 @Entity
 @Table(
         name = "transfer_recipients",
@@ -31,8 +36,9 @@ public class TransferRecipient {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name = "transfer_id", nullable = false)
-    private UUID transferId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "transfer_id", nullable = false)
+    private TransferMetadata transfer;
 
     @Column(name = "recipient_id", nullable = false)
     private UUID recipientId;

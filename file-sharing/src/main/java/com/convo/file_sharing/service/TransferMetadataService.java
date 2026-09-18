@@ -95,7 +95,7 @@ public class TransferMetadataService {
         List<UUID> recipientIds = List.copyOf(request.recipients());
         List<TransferRecipient> recipientRows = recipientIds.stream()
                 .map(recipientId -> TransferRecipient.builder()
-                        .transferId(saved.getTransferId())
+                        .transfer(saved)
                         .recipientId(recipientId)
                         .build())
                 .toList();
@@ -128,7 +128,7 @@ public class TransferMetadataService {
         }
 
         if (entity.getPreviousHash() == null) {
-            claimChainRoot(patch.contentHash(), transferId);
+            claimChainRoot(patch.contentHash(), entity);
         }
 
         entity.setFileHash(patch.fileHash());
@@ -152,8 +152,8 @@ public class TransferMetadataService {
      * this row, so a later attempt to claim it as a fresh root (malicious
      * or not) hits the same conflict.
      */
-    private void claimChainRoot(String contentHash, UUID transferId) {
-        ChainRoot root = ChainRoot.builder().contentHash(contentHash).transferId(transferId).build();
+    private void claimChainRoot(String contentHash, TransferMetadata transfer) {
+        ChainRoot root = ChainRoot.builder().contentHash(contentHash).transfer(transfer).build();
         try {
             chainRootRepository.saveAndFlush(Objects.requireNonNull(root));
         } catch (DataIntegrityViolationException conflict) {
@@ -187,9 +187,9 @@ public class TransferMetadataService {
         List<UUID> transferIds = entries.stream().map(TransferMetadata::getTransferId).toList();
         Map<UUID, List<UUID>> recipientsByTransferId = transferIds.isEmpty()
                 ? Collections.emptyMap()
-                : recipientRepository.findByTransferIdIn(transferIds).stream()
+                : recipientRepository.findByTransfer_TransferIdIn(transferIds).stream()
                         .collect(Collectors.groupingBy(
-                                TransferRecipient::getTransferId,
+                                r -> r.getTransfer().getTransferId(),
                                 Collectors.mapping(TransferRecipient::getRecipientId, Collectors.toList())));
 
         return entries.stream()
@@ -212,7 +212,7 @@ public class TransferMetadataService {
     }
 
     private MetadataResponseDto toResponse(TransferMetadata e) {
-        List<UUID> recipients = recipientRepository.findByTransferId(e.getTransferId()).stream()
+        List<UUID> recipients = recipientRepository.findByTransfer_TransferId(e.getTransferId()).stream()
                 .map(TransferRecipient::getRecipientId)
                 .toList();
         return toResponse(e, recipients);

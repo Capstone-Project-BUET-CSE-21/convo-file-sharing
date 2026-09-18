@@ -1,11 +1,7 @@
 package com.convo.file_sharing.controller;
 
 import com.convo.file_sharing.dto.ParticipantDto;
-import com.convo.file_sharing.dto.ParticipantRegistrationDto;
-import com.convo.file_sharing.security.CurrentUser;
 import com.convo.file_sharing.service.SessionParticipantService;
-import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,20 +17,12 @@ public class SessionParticipantController {
         this.service = service;
     }
 
+    // No corresponding POST — convo-backend's own POST /api/backend/meeting-entry
+    // is what creates the meeting_user row this reads (via SessionParticipantService),
+    // before a client ever reaches this service. Registering presence here
+    // separately would just be writing a second copy of that same event.
     @GetMapping("/{sessionId}/participants")
     public ResponseEntity<List<ParticipantDto>> listParticipants(@PathVariable String sessionId) {
         return ResponseEntity.ok(service.listParticipants(sessionId));
-    }
-
-    // A caller may only register their own presence in a session — letting
-    // dto.userId() be anyone else would make the trace screen's
-    // isAuthorizedHop check trivially satisfiable by an attacker adding
-    // themselves (or a victim) as a participant of any session.
-    @PostMapping("/{sessionId}/participants")
-    public ResponseEntity<ParticipantDto> addParticipant(
-            @PathVariable String sessionId,
-            @Valid @RequestBody ParticipantRegistrationDto dto) {
-        ParticipantDto saved = service.addParticipant(sessionId, dto.userId(), CurrentUser.id());
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 }
