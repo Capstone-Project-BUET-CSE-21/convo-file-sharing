@@ -25,6 +25,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+// Same reasoning as TransferMetadataService's own suppression: Mockito's
+// any(X.class) matchers and Lombok-generated entity getters aren't
+// annotated for nullability, so Eclipse's null analysis flags them
+// throughout this file for no real reason — any(X.class) returning null
+// statically is a known, harmless Mockito quirk (it's intercepted before
+// reaching real code), not an actual null risk here.
+@SuppressWarnings("null")
 public class TransferMetadataServiceTest {
 
     @Mock
@@ -61,6 +68,14 @@ public class TransferMetadataServiceTest {
 
         assertEquals(sessionId, saved.getOriginSessionId());
         assertNull(saved.getPreviousHash());
+
+        // The response DTO is a separate mapping (toResponse) from what gets
+        // persisted — assert on it too, not just the captured entity, so a
+        // broken toResponse() wiring would actually fail this test.
+        assertEquals(saved.getTransferId(), res.transferId());
+        assertEquals(sessionId, res.sessionId());
+        assertNull(res.previousHash());
+        assertEquals(req.recipients(), res.recipients());
     }
 
     @Test
@@ -162,5 +177,11 @@ public class TransferMetadataServiceTest {
         assertEquals("hash123", saved.getFileHash());
         assertEquals("sig123", saved.getSignature());
         assertEquals("content123", saved.getContentHash());
+
+        // fileHash/signature/contentHash aren't part of the response DTO's
+        // own fields, but its identity should still trace back to the same
+        // entity that got saved — same reasoning as the other test above.
+        assertEquals(saved.getTransferId(), res.transferId());
+        assertEquals(senderId, res.senderId());
     }
 }

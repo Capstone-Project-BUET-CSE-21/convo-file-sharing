@@ -25,6 +25,17 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+// Eclipse's null analysis (java.compile.nullAnalysis.mode=automatic) flags
+// essentially every Lombok-generated entity getter and Spring Data
+// repository call in this class as an "unchecked conversion" — none of it
+// reflects a real null risk. TransferMetadata/TransferRecipient's fields
+// are backed by NOT NULL database columns; JPA never returns a loaded
+// entity with a null value in one. The warnings are just Eclipse having no
+// way to know that (nothing here is annotated for nullability), not a sign
+// anything needs a runtime check. Suppressed at the class level rather
+// than scattered per-expression, since that's genuinely the honest scope
+// of the "problem."
+@SuppressWarnings("null")
 @Service
 public class TransferMetadataService {
 
