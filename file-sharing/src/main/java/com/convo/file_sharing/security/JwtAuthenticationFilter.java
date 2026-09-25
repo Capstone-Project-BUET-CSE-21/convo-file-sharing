@@ -84,6 +84,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } catch (DecodingException | IllegalArgumentException notBase64) {
             // fall back to raw bytes below — matches convo-backend's JwtService
         }
-        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        byte[] raw = secret.getBytes(StandardCharsets.UTF_8);
+        if (raw.length < 32) {
+            throw new IllegalStateException("app.jwt.secret (JWT_SECRET) must be at least 32 bytes");
+        }
+        return Keys.hmacShaKeyFor(raw);
     }
 }

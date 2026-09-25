@@ -11,7 +11,10 @@ import java.util.Objects;
 // must match convo-backend's own app.internal.service-key exactly; no
 // fallback default, same reasoning as convo-backend's own
 // InternalServiceProperties (fail loudly at startup rather than silently
-// sending an empty/guessable header).
+// sending an empty/guessable header). That relies on the placeholders in
+// application.properties having EMPTY defaults (${INTERNAL_SERVICE_KEY:}):
+// with none at all, an unset variable binds as the literal "${...}" text
+// and passes the blank checks below.
 @ConfigurationProperties(prefix = "app.internal")
 public class InternalServiceProperties {
 
