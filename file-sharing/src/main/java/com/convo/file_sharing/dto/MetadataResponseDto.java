@@ -11,9 +11,11 @@ import java.util.UUID;
 //
 // `recipients` is deliberately NOT part of that signed block — it's
 // server-side ACL metadata only (see TransferRecipient), added here purely
-// so the client can see back what it just registered. Canonicalizer.java /
-// canonicalize.js both hash a fixed, explicit 8-key whitelist, so this
-// field is safely ignored by both sides' signing logic.
+// so the client can see back what it just registered. canonicalize.js
+// hashes a fixed, explicit 8-key whitelist, so this field is safely
+// ignored by the client's signing logic. (There is no server-side
+// canonicalizer — canonicalization/hashing/signing all happen client-side;
+// this service only ever stores the resulting hash/signature.)
 public record MetadataResponseDto(
         UUID transferId,
         String sessionId,
