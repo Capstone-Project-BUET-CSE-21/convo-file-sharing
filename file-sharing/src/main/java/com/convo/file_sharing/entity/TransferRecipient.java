@@ -10,11 +10,14 @@ import lombok.Setter;
 import java.util.UUID;
 
 // One row per (transfer, intended recipient) pair, written once alongside
-// the pending TransferMetadata row and never mutated afterwards. This is
-// what makeIsAuthorizedHop (frontend identity/traceVerification.js) checks
-// a forwarded hop's sender against, instead of session_participants —
-// "was this sender someone the *previous holder* actually sent this file
-// to," not just "was this sender in the same meeting at some point."
+// the pending TransferMetadata row and never mutated afterwards. Informational
+// record of who a transfer was addressed to — echoed back in
+// MetadataResponseDto/ChainHistoryResponseDto. Not used to gate anything:
+// there used to be a per-file authorization check measured against this
+// (frontend's makeIsAuthorizedHop), removed deliberately — see
+// convo-frontend's identity/traceVerification.js for why (it could only
+// confirm sharing that happened through Convo itself, so legitimate sharing
+// through any other channel looked identical to an actual leak).
 //
 // transfer is a real foreign key (transfer_id -> transfer_metadata.transfer_id)
 // — same-service reference, enforced at the database level. recipientId
