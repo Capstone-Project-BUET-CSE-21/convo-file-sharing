@@ -1,10 +1,12 @@
 package com.convo.file_sharing.service;
 
+import com.convo.file_sharing.dto.ChainHistoryResponseDto;
 import com.convo.file_sharing.dto.MetadataPatchDto;
 import com.convo.file_sharing.dto.MetadataRequestDto;
 import com.convo.file_sharing.dto.MetadataResponseDto;
 import com.convo.file_sharing.entity.ChainRoot;
 import com.convo.file_sharing.entity.TransferMetadata;
+import com.convo.file_sharing.entity.TransferRecipient;
 import com.convo.file_sharing.exception.ForbiddenException;
 import com.convo.file_sharing.repository.ChainRootRepository;
 import com.convo.file_sharing.repository.TransferMetadataRepository;
@@ -17,7 +19,9 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -186,5 +190,94 @@ public class TransferMetadataServiceTest {
         // entity that got saved — same reasoning as the other test above.
         assertEquals(saved.getTransferId(), res.transferId());
         assertEquals(senderId, res.senderId());
+    }
+
+    private static TransferMetadata hop(UUID transferId, UUID senderId, String fileHash, String previousHash) {
+        TransferMetadata t = new TransferMetadata();
+        t.setTransferId(transferId);
+        t.setSenderId(senderId);
+        t.setSessionId("S1");
+        t.setOriginSessionId("S1");
+        t.setFileName("f.txt");
+        t.setFileSize(10L);
+        t.setMimeType("text/plain");
+        t.setTimestamp(OffsetDateTime.now());
+        t.setContentHash("content-abc");
+        t.setFileHash(fileHash);
+        t.setPreviousHash(previousHash);
+        t.setSignature("sig");
+        return t;
+    }
+
+    @Test
+    void testGetChainHistory_AttachesRecipientsAndDisplayNamesPerHop() {
+        UUID alice = UUID.randomUUID();
+        UUID bob = UUID.randomUUID();
+        UUID carol = UUID.randomUUID();
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+
+        TransferMetadata root = hop(t1, alice, "h1", null);
+        TransferMetadata forward = hop(t2, bob, "h2", "h1");
+
+        when(repository.findByContentHashOrderByTimestampAsc("content-abc")).thenReturn(List.of(root, forward));
+        when(recipientRepository.findByTransfer_TransferIdIn(List.of(t1, t2))).thenReturn(List.of(
+                TransferRecipient.builder().transfer(root).recipientId(bob).build(),
+                TransferRecipient.builder().transfer(forward).recipientId(carol).build()));
+        when(userLookupClient.getDisplayNames(List.of(alice, bob)))
+                .thenReturn(Map.of(alice, "Alice", bob, "Bob"));
+
+        List<ChainHistoryResponseDto> history = service.getChainHistory("content-abc");
+
+        assertEquals(2, history.size());
+        assertEquals("Alice", history.get(0).senderDisplayName());
+        assertEquals(List.of(bob), history.get(0).recipients());
+        assertEquals("Bob", history.get(1).senderDisplayName());
+        assertEquals(List.of(carol), history.get(1).recipients());
+    }
+
+    @Test
+    void testGetChainHistory_UnresolvedSender_DisplayNameIsNullNotAnError() {
+        UUID ghost = UUID.randomUUID();
+        UUID t1 = UUID.randomUUID();
+        TransferMetadata root = hop(t1, ghost, "h1", null);
+
+        when(repository.findByContentHashOrderByTimestampAsc("content-abc")).thenReturn(List.of(root));
+        when(recipientRepository.findByTransfer_TransferIdIn(List.of(t1))).thenReturn(List.of());
+        // convo-backend unreachable or user deleted — UserLookupClient
+        // fails closed to an empty map rather than throwing.
+        when(userLookupClient.getDisplayNames(List.of(ghost))).thenReturn(Map.of());
+
+        List<ChainHistoryResponseDto> history = service.getChainHistory("content-abc");
+
+        assertEquals(1, history.size());
+        assertNull(history.get(0).senderDisplayName());
+        assertEquals(List.of(), history.get(0).recipients());
+    }
+
+    @Test
+    void testGetChainHistory_SameSenderOnMultipleHops_LookedUpOnce() {
+        UUID alice = UUID.randomUUID();
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+
+        when(repository.findByContentHashOrderByTimestampAsc("content-abc"))
+                .thenReturn(List.of(hop(t1, alice, "h1", null), hop(t2, alice, "h2", "h1")));
+        when(recipientRepository.findByTransfer_TransferIdIn(any())).thenReturn(List.of());
+        when(userLookupClient.getDisplayNames(List.of(alice))).thenReturn(Map.of(alice, "Alice"));
+
+        service.getChainHistory("content-abc");
+
+        // Deduplicated before the call — one id, not the same id twice.
+        verify(userLookupClient).getDisplayNames(List.of(alice));
+    }
+
+    @Test
+    void testGetChainHistory_UnknownContent_ReturnsEmpty() {
+        when(repository.findByContentHashOrderByTimestampAsc("nothing")).thenReturn(List.of());
+        when(userLookupClient.getDisplayNames(List.of())).thenReturn(Map.of());
+
+        assertEquals(List.of(), service.getChainHistory("nothing"));
+        verifyNoInteractions(recipientRepository);
     }
 }
