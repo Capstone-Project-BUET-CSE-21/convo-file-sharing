@@ -76,6 +76,16 @@ class UserLookupClientTest {
     }
 
     @Test
+    void userWithNullDisplayName_IsSkipped_OthersStillResolve() {
+        UUID alice = UUID.randomUUID();
+        UUID nameless = UUID.randomUUID();
+        responseBody.set("[{\"id\":\"" + alice + "\",\"displayName\":\"Alice\"},"
+                + "{\"id\":\"" + nameless + "\",\"displayName\":null}]");
+
+        assertEquals(Map.of(alice, "Alice"), client.getDisplayNames(List.of(alice, nameless)));
+    }
+
+    @Test
     void duplicateIds_SentOnce() {
         UUID alice = UUID.randomUUID();
         responseBody.set("[]");

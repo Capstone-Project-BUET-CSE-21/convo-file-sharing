@@ -6,10 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 // Calls convo-backend's internal, server-to-server user-batch API
 // (InternalUserController) to resolve display names for the sender/
@@ -71,8 +71,17 @@ public class UserLookupClient {
             if (users == null) {
                 return Collections.emptyMap();
             }
-            return List.of(users).stream()
-                    .collect(Collectors.toMap(PublicUser::id, PublicUser::displayName));
+            // A plain loop, not Collectors.toMap: toMap throws on a null
+            // value, so one user without a display name would blank out
+            // every name in the response. Skipping them gives that user the
+            // same fallback label as an unknown id.
+            Map<UUID, String> names = new HashMap<>();
+            for (PublicUser user : users) {
+                if (user != null && user.id() != null && user.displayName() != null) {
+                    names.put(user.id(), user.displayName());
+                }
+            }
+            return names;
         } catch (Exception e) {
             return Collections.emptyMap();
         }
