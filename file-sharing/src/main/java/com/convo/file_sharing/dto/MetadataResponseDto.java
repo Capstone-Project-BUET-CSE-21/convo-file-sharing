@@ -10,8 +10,8 @@ import java.util.UUID;
 // without updating section 0 for everyone.
 //
 // `recipients` is deliberately NOT part of that signed block — it's
-// server-side ACL metadata only (see TransferRecipient), added here purely
-// so the client can see back what it just registered. canonicalize.js
+// an informational server-side record only (see TransferRecipient), added
+// here purely so the client can see back what it just registered. canonicalize.js
 // hashes a fixed, explicit 8-key whitelist, so this field is safely
 // ignored by the client's signing logic. (There is no server-side
 // canonicalizer — canonicalization/hashing/signing all happen client-side;

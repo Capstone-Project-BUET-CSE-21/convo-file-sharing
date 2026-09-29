@@ -44,7 +44,9 @@ public class TransferMetadata {
     @Column(name = "mime_type", nullable = false)
     private String mimeType;
 
-    // Task 1: hash of/from the previous transfer in this session, null if first
+    // fileHash of the share this one continues (chosen server-side, see
+    // TransferMetadataService.createPendingTransfer); null starts a new tree
+    // in the file's history.
     @Column(name = "previous_hash")
     private String previousHash;
 
