@@ -62,12 +62,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         .parseSignedClaims(token)
                         .getPayload();
 
-                UUID userId = UUID.fromString(claims.get("uid", String.class));
+                // A validly-signed token without a uid would otherwise hit
+                // UUID.fromString(null) — a NullPointerException, which the
+                // catch below doesn't cover, escaping as a 500.
+                String uid = claims.get("uid", String.class);
+                if (uid == null) {
+                    throw new IllegalArgumentException("token has no uid claim");
+                }
+                UUID userId = UUID.fromString(uid);
                 var authentication = new UsernamePasswordAuthenticationToken(userId, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (JwtException | IllegalArgumentException expiredOrMalformed) {
                 // Leave the SecurityContext empty — WebConfig's
-                // .anyRequest().authenticated() turns that into a 401.
+                // .anyRequest().authenticated() plus its 401 entry point
+                // turns that into a 401.
                 SecurityContextHolder.clearContext();
             }
         }
