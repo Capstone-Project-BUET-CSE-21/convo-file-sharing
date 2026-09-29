@@ -42,14 +42,17 @@ public class TransferMetadataService {
     private final TransferMetadataRepository repository;
     private final ChainRootRepository chainRootRepository;
     private final TransferRecipientRepository recipientRepository;
+    private final UserLookupClient userLookupClient;
 
     public TransferMetadataService(
             TransferMetadataRepository repository,
             ChainRootRepository chainRootRepository,
-            TransferRecipientRepository recipientRepository) {
+            TransferRecipientRepository recipientRepository,
+            UserLookupClient userLookupClient) {
         this.repository = repository;
         this.chainRootRepository = chainRootRepository;
         this.recipientRepository = recipientRepository;
+        this.userLookupClient = userLookupClient;
     }
 
     /**
@@ -203,12 +206,18 @@ public class TransferMetadataService {
                                 r -> r.getTransfer().getTransferId(),
                                 Collectors.mapping(TransferRecipient::getRecipientId, Collectors.toList())));
 
+        // One batch call to convo-backend for every distinct sender in the
+        // chain, instead of the frontend separately resolving names itself.
+        List<UUID> senderIds = entries.stream().map(TransferMetadata::getSenderId).distinct().toList();
+        Map<UUID, String> displayNamesBySenderId = userLookupClient.getDisplayNames(senderIds);
+
         return entries.stream()
                 .map(e -> new com.convo.file_sharing.dto.ChainHistoryResponseDto(
                         e.getTransferId(),
                         e.getSessionId(),
                         e.getOriginSessionId(),
                         e.getSenderId(),
+                        displayNamesBySenderId.get(e.getSenderId()),
                         e.getFileName(),
                         e.getFileSize(),
                         e.getMimeType(),

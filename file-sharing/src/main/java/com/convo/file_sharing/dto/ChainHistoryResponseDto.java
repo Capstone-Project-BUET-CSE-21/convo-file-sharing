@@ -5,14 +5,19 @@ import java.util.List;
 import java.util.UUID;
 
 // `recipients` is who THIS hop's sender declared the file was going to.
-// makeIsAuthorizedHop (frontend) checks a later hop's senderId against its
-// immediate ancestor's `recipients` list here — real per-file authorization
-// instead of "was in the same session at some point."
+//
+// senderDisplayName is resolved server-side via UserLookupClient (a call to
+// convo-backend's internal user-batch API), so the frontend gets a real
+// name directly in this response instead of making a second, separate call
+// to convo-backend itself. Null if convo-backend couldn't resolve the id
+// (deleted/unknown user) or was unreachable — callers should already have
+// a fallback label for a missing name.
 public record ChainHistoryResponseDto(
         UUID transferId,
         String sessionId,
         String originSessionId,
         UUID senderId,
+        String senderDisplayName,
         String fileName,
         Long fileSize,
         String mimeType,

@@ -43,6 +43,9 @@ public class TransferMetadataServiceTest {
     @Mock
     private TransferRecipientRepository recipientRepository;
 
+    @Mock
+    private UserLookupClient userLookupClient;
+
     @InjectMocks
     private TransferMetadataService service;
 
