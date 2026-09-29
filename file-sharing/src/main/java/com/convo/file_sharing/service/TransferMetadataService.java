@@ -1,17 +1,16 @@
 package com.convo.file_sharing.service;
 
+import com.convo.file_sharing.dto.ChainHistoryResponseDto;
 import com.convo.file_sharing.dto.MetadataPatchDto;
 import com.convo.file_sharing.dto.MetadataRequestDto;
 import com.convo.file_sharing.dto.MetadataResponseDto;
-import com.convo.file_sharing.entity.ChainRoot;
+import com.convo.file_sharing.dto.RecipientDto;
 import com.convo.file_sharing.entity.TransferMetadata;
 import com.convo.file_sharing.entity.TransferRecipient;
 import com.convo.file_sharing.exception.ForbiddenException;
 import com.convo.file_sharing.exception.NotFoundException;
-import com.convo.file_sharing.repository.ChainRootRepository;
 import com.convo.file_sharing.repository.TransferMetadataRepository;
 import com.convo.file_sharing.repository.TransferRecipientRepository;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,9 +18,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -40,28 +41,32 @@ import java.util.stream.Collectors;
 public class TransferMetadataService {
 
     private final TransferMetadataRepository repository;
-    private final ChainRootRepository chainRootRepository;
     private final TransferRecipientRepository recipientRepository;
     private final UserLookupClient userLookupClient;
 
     public TransferMetadataService(
             TransferMetadataRepository repository,
-            ChainRootRepository chainRootRepository,
             TransferRecipientRepository recipientRepository,
             UserLookupClient userLookupClient) {
         this.repository = repository;
-        this.chainRootRepository = chainRootRepository;
         this.recipientRepository = recipientRepository;
         this.userLookupClient = userLookupClient;
     }
 
     /**
-     * 3.1 Task 1 + Task 2 + Task 3.
-     * Looks up previousHash from the most recent row for the session,
-     * generates transferId/timestamp server-side (never trust a client
-     * timestamp — that's the whole point of Task 2), and persists a
-     * pending row immediately with file_hash/signature left null, since
-     * the client hasn't hashed or signed anything yet at this point.
+     * Creates the pending row for one share. transferId and timestamp are
+     * server-generated; fileHash/signature are filled in by the PATCH once
+     * the client has hashed and signed.
+     *
+     * The server, not the client, decides which earlier share this one
+     * continues: the most recent completed share of the same content that
+     * named this sender as a recipient. If there is none, the sender never
+     * received this content through Convo — they introduced it themselves
+     * (the original sender sharing again, or a file that arrived by email,
+     * USB, another app...) — and this share starts its own tree. So a file's
+     * history is a forest: Charlie→Alice then Alice→Dave links Alice's share
+     * under Charlie's, while Charlie sharing again later, or Bob sharing a
+     * copy he got outside Convo, each starts a new root.
      *
      * authenticatedUserId comes from the caller's JWT (CurrentUser) — the
      * request body's senderId must match it, otherwise anyone could create
@@ -73,39 +78,28 @@ public class TransferMetadataService {
             throw new ForbiddenException("senderId must match the authenticated user");
         }
 
-        String previousHash = request.previousHash();
-        String originSessionId = request.sessionId();
-
-        if (previousHash != null && !previousHash.trim().isEmpty()) {
-            TransferMetadata prev = repository.findByFileHash(previousHash)
-                    .orElseThrow(() -> new NotFoundException("Invalid previousHash: not found in durable chain store"));
-            originSessionId = prev.getOriginSessionId();
-        } else {
-            previousHash = null;
-        }
+        TransferMetadata parent = recipientRepository
+                .findSharesReceivedBy(request.senderId(), request.contentHash())
+                .stream().findFirst().orElse(null);
 
         TransferMetadata entity = TransferMetadata.builder()
-                .transferId(UUID.randomUUID())        // Task 2: server-generated
+                .transferId(UUID.randomUUID())
                 .sessionId(request.sessionId())
                 .senderId(request.senderId())
                 .fileName(request.fileName())
                 .fileSize(request.fileSize())
                 .mimeType(request.mimeType())
-                .previousHash(previousHash)            // Task 1
-                .originSessionId(originSessionId)      // Task 7
-                .fileHash(null)                        // Task 3: filled in by PATCH later
-                .contentHash(null)
+                .previousHash(parent == null ? null : parent.getFileHash())
+                .originSessionId(parent == null ? request.sessionId() : parent.getOriginSessionId())
+                .contentHash(request.contentHash())
+                .fileHash(null)
                 .signature(null)
-                .timestamp(nowTruncatedForStorage())    // Task 2: server clock, not client
+                .timestamp(nowTruncatedForStorage())
                 .build();
 
         Objects.requireNonNull(entity, "entity must not be null");
         TransferMetadata saved = repository.save(entity);
 
-        // Record who this hop's sender is actually handing the file to.
-        // Written once, immutable afterwards — this is the ACL a later
-        // hop's authorization check is measured against (see
-        // makeIsAuthorizedHop in the frontend), not session attendance.
         List<UUID> recipientIds = List.copyOf(request.recipients());
         List<TransferRecipient> recipientRows = recipientIds.stream()
                 .map(recipientId -> TransferRecipient.builder()
@@ -119,16 +113,11 @@ public class TransferMetadataService {
     }
 
     /**
-     * 3.1 Task 3, follow-up call: PATCH /api/file-sharing/transfer/metadata/{transferId}.
-     * The client has now built the signed block per sections 0.3/0.4 and
-     * posts fileHash + signature back; we update the pending row rather
-     * than creating a new one, so transfer_metadata stays the single
-     * server-side audit record for this transfer (3.3 Task 3).
-     *
-     * Only the sender who created the pending row (per the JWT, not the
-     * request body) may complete it — otherwise anyone who learned a
-     * transferId could attach an arbitrary hash/signature to someone
-     * else's transfer.
+     * Completes a pending share once the client has signed the block
+     * returned by createPendingTransfer. Only the original sender (per the
+     * JWT, not the request body) may complete it, and the content hash must
+     * be the one declared when the share was created — otherwise the share
+     * would sit in the wrong file's history.
      */
     @Transactional
     public MetadataResponseDto attachHashAndSignature(UUID transferId, MetadataPatchDto patch, UUID authenticatedUserId) {
@@ -140,41 +129,15 @@ public class TransferMetadataService {
         if (!entity.getSenderId().equals(authenticatedUserId)) {
             throw new ForbiddenException("Only the original sender may complete this transfer");
         }
-
-        if (entity.getPreviousHash() == null) {
-            claimChainRoot(patch.contentHash(), entity);
+        if (!patch.contentHash().equals(entity.getContentHash())) {
+            throw new IllegalArgumentException("contentHash does not match the one this transfer was created with");
         }
 
         entity.setFileHash(patch.fileHash());
         entity.setSignature(patch.signature());
-        entity.setContentHash(patch.contentHash());
 
         TransferMetadata saved = repository.save(entity);
         return toResponse(saved);
-    }
-
-    /**
-     * Atomically claims "this content hash's chain starts here." Replaces
-     * the old find-then-check ("laundering gap") logic, which raced: two
-     * concurrent first-shares of the same fresh file could both query an
-     * empty history and both win, producing two unlinked root entries for
-     * the same content. content_hash is chain_roots' primary key, so the
-     * database — not a SELECT this code runs first — is what enforces
-     * uniqueness; a losing concurrent writer gets a constraint violation
-     * on save, not a successful insert. This also subsumes the original
-     * laundering check: content that was ever shared before already holds
-     * this row, so a later attempt to claim it as a fresh root (malicious
-     * or not) hits the same conflict.
-     */
-    private void claimChainRoot(String contentHash, TransferMetadata transfer) {
-        ChainRoot root = ChainRoot.builder().contentHash(contentHash).transfer(transfer).build();
-        try {
-            chainRootRepository.saveAndFlush(Objects.requireNonNull(root));
-        } catch (DataIntegrityViolationException conflict) {
-            throw new IllegalArgumentException(
-                    "This file content already has a chain root from another transfer — "
-                            + "refetch its history and link via previousHash instead of starting a new chain.");
-        }
     }
 
     /**
@@ -192,12 +155,11 @@ public class TransferMetadataService {
         return OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
     }
 
-    public List<com.convo.file_sharing.dto.ChainHistoryResponseDto> getChainHistory(String contentHash) {
-        List<TransferMetadata> entries = repository.findByContentHashOrderByTimestampAsc(contentHash);
+    /** Every completed share of this content, oldest first — all trees of the forest. */
+    public List<ChainHistoryResponseDto> getChainHistory(String contentHash) {
+        List<TransferMetadata> entries = repository.findByContentHashAndFileHashIsNotNullOrderByTimestampAsc(contentHash);
 
-        // One batch query for every hop's recipients instead of N+1 — chains
-        // are short in practice, but there's no reason to pay per-hop
-        // round trips for something known up front.
+        // One batch query for every hop's recipients instead of N+1.
         List<UUID> transferIds = entries.stream().map(TransferMetadata::getTransferId).toList();
         Map<UUID, List<UUID>> recipientsByTransferId = transferIds.isEmpty()
                 ? Collections.emptyMap()
@@ -206,18 +168,19 @@ public class TransferMetadataService {
                                 r -> r.getTransfer().getTransferId(),
                                 Collectors.mapping(TransferRecipient::getRecipientId, Collectors.toList())));
 
-        // One batch call to convo-backend for every distinct sender in the
-        // chain, instead of the frontend separately resolving names itself.
-        List<UUID> senderIds = entries.stream().map(TransferMetadata::getSenderId).distinct().toList();
-        Map<UUID, String> displayNamesBySenderId = userLookupClient.getDisplayNames(senderIds);
+        // One batch call to convo-backend for every sender and recipient.
+        Set<UUID> people = new LinkedHashSet<>();
+        entries.forEach(e -> people.add(e.getSenderId()));
+        recipientsByTransferId.values().forEach(people::addAll);
+        Map<UUID, String> names = userLookupClient.getDisplayNames(List.copyOf(people));
 
         return entries.stream()
-                .map(e -> new com.convo.file_sharing.dto.ChainHistoryResponseDto(
+                .map(e -> new ChainHistoryResponseDto(
                         e.getTransferId(),
                         e.getSessionId(),
                         e.getOriginSessionId(),
                         e.getSenderId(),
-                        displayNamesBySenderId.get(e.getSenderId()),
+                        names.get(e.getSenderId()),
                         e.getFileName(),
                         e.getFileSize(),
                         e.getMimeType(),
@@ -226,7 +189,9 @@ public class TransferMetadataService {
                         e.getContentHash(),
                         e.getFileHash(),
                         e.getSignature(),
-                        recipientsByTransferId.getOrDefault(e.getTransferId(), Collections.emptyList())
+                        recipientsByTransferId.getOrDefault(e.getTransferId(), Collections.emptyList()).stream()
+                                .map(id -> new RecipientDto(id, names.get(id)))
+                                .toList()
                 ))
                 .toList();
     }

@@ -4,14 +4,15 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-// `recipients` is who THIS hop's sender declared the file was going to.
+// One completed share of a file. previousHash is the fileHash of the share
+// this one continues — the latest earlier share that named this sender as a
+// recipient — or null if the sender never received this content through
+// Convo (they introduced it themselves). A file's history is therefore a
+// forest: every null-previousHash entry starts its own tree.
 //
-// senderDisplayName is resolved server-side via UserLookupClient (a call to
-// convo-backend's internal user-batch API), so the frontend gets a real
-// name directly in this response instead of making a second, separate call
-// to convo-backend itself. Null if convo-backend couldn't resolve the id
-// (deleted/unknown user) or was unreachable — callers should already have
-// a fallback label for a missing name.
+// Display names are resolved server-side via UserLookupClient (a call to
+// convo-backend's internal user-batch API) and are null if convo-backend
+// couldn't resolve an id or was unreachable.
 public record ChainHistoryResponseDto(
         UUID transferId,
         String sessionId,
@@ -26,5 +27,5 @@ public record ChainHistoryResponseDto(
         String contentHash,
         String fileHash,
         String signature,
-        List<UUID> recipients
+        List<RecipientDto> recipients
 ) {}

@@ -4,11 +4,10 @@ import com.convo.file_sharing.dto.ChainHistoryResponseDto;
 import com.convo.file_sharing.dto.MetadataPatchDto;
 import com.convo.file_sharing.dto.MetadataRequestDto;
 import com.convo.file_sharing.dto.MetadataResponseDto;
-import com.convo.file_sharing.entity.ChainRoot;
+import com.convo.file_sharing.dto.RecipientDto;
 import com.convo.file_sharing.entity.TransferMetadata;
 import com.convo.file_sharing.entity.TransferRecipient;
 import com.convo.file_sharing.exception.ForbiddenException;
-import com.convo.file_sharing.repository.ChainRootRepository;
 import com.convo.file_sharing.repository.TransferMetadataRepository;
 import com.convo.file_sharing.repository.TransferRecipientRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,7 +16,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -27,22 +25,18 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 // Same reasoning as TransferMetadataService's own suppression: Mockito's
 // any(X.class) matchers and Lombok-generated entity getters aren't
 // annotated for nullability, so Eclipse's null analysis flags them
-// throughout this file for no real reason — any(X.class) returning null
-// statically is a known, harmless Mockito quirk (it's intercepted before
-// reaching real code), not an actual null risk here.
+// throughout this file for no real reason.
 @SuppressWarnings("null")
 public class TransferMetadataServiceTest {
 
     @Mock
     private TransferMetadataRepository repository;
-
-    @Mock
-    private ChainRootRepository chainRootRepository;
 
     @Mock
     private TransferRecipientRepository recipientRepository;
@@ -56,141 +50,118 @@ public class TransferMetadataServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
     }
 
-    @Test
-    void testCreatePendingTransfer_FreshFile_SetsOriginSessionIdToCurrent() {
-        String sessionId = "ABC-1234";
-        UUID senderId = UUID.randomUUID();
-        MetadataRequestDto req = new MetadataRequestDto(
-                sessionId, senderId, "test.txt", 100L, "text/plain", null, List.of(UUID.randomUUID()));
+    private static MetadataRequestDto request(UUID sender, String session, UUID... recipients) {
+        return new MetadataRequestDto(session, sender, "f.txt", 10L, "text/plain", "content-abc", List.of(recipients));
+    }
 
-        when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
-
-        MetadataResponseDto res = service.createPendingTransfer(req, senderId);
-
+    private TransferMetadata savedEntity() {
         ArgumentCaptor<TransferMetadata> captor = ArgumentCaptor.forClass(TransferMetadata.class);
         verify(repository).save(captor.capture());
-        TransferMetadata saved = captor.getValue();
+        return captor.getValue();
+    }
 
-        assertEquals(sessionId, saved.getOriginSessionId());
+    // ---- createPendingTransfer: who the parent is ---------------------------
+
+    @Test
+    void senderNeverReceivedThisContent_StartsNewRoot() {
+        UUID charlie = UUID.randomUUID();
+        when(recipientRepository.findSharesReceivedBy(charlie, "content-abc")).thenReturn(List.of());
+
+        MetadataResponseDto res = service.createPendingTransfer(request(charlie, "S1", UUID.randomUUID()), charlie);
+
+        TransferMetadata saved = savedEntity();
         assertNull(saved.getPreviousHash());
-
-        // The response DTO is a separate mapping (toResponse) from what gets
-        // persisted — assert on it too, not just the captured entity, so a
-        // broken toResponse() wiring would actually fail this test.
-        assertEquals(saved.getTransferId(), res.transferId());
-        assertEquals(sessionId, res.sessionId());
-        assertNull(res.previousHash());
-        assertEquals(req.recipients(), res.recipients());
+        assertEquals("S1", saved.getOriginSessionId());
+        assertEquals("content-abc", saved.getContentHash());
+        assertNull(saved.getFileHash(), "stays pending until the PATCH");
+        assertNull(res.previousHash(), "the block the client signs carries the server's choice");
     }
 
     @Test
-    void testCreatePendingTransfer_SenderIdNotAuthenticatedUser_ThrowsForbidden() {
-        MetadataRequestDto req = new MetadataRequestDto(
-                "ABC-1234", UUID.randomUUID(), "test.txt", 100L, "text/plain", null, List.of(UUID.randomUUID()));
+    void senderReceivedThisContent_ContinuesTheLatestShareThatNamedThem() {
+        UUID alice = UUID.randomUUID();
+        TransferMetadata received = new TransferMetadata();
+        received.setFileHash("hash-of-charlie-to-alice");
+        received.setOriginSessionId("S-origin");
+        when(recipientRepository.findSharesReceivedBy(alice, "content-abc")).thenReturn(List.of(received));
 
-        assertThrows(ForbiddenException.class, () -> service.createPendingTransfer(req, UUID.randomUUID()));
-        verifyNoInteractions(repository);
+        MetadataResponseDto res = service.createPendingTransfer(request(alice, "S2", UUID.randomUUID()), alice);
+
+        TransferMetadata saved = savedEntity();
+        assertEquals("hash-of-charlie-to-alice", saved.getPreviousHash());
+        assertEquals("S-origin", saved.getOriginSessionId());
+        assertEquals("hash-of-charlie-to-alice", res.previousHash());
     }
 
     @Test
-    void testCreatePendingTransfer_WithPreviousHash_InheritsOriginSessionId() {
-        String newSessionId = "XYZ-5678";
-        String originSessionId = "ABC-1234";
-        String prevHash = "old_hash";
-        UUID senderId = UUID.randomUUID();
-
-        MetadataRequestDto req = new MetadataRequestDto(
-                newSessionId, senderId, "test.txt", 100L, "text/plain", prevHash, List.of(UUID.randomUUID()));
-
-        TransferMetadata prevEntity = new TransferMetadata();
-        prevEntity.setOriginSessionId(originSessionId);
-
-        when(repository.findByFileHash(prevHash)).thenReturn(Optional.of(prevEntity));
-        when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
-
-        service.createPendingTransfer(req, senderId);
-
-        ArgumentCaptor<TransferMetadata> captor = ArgumentCaptor.forClass(TransferMetadata.class);
-        verify(repository).save(captor.capture());
-        TransferMetadata saved = captor.getValue();
-
-        assertEquals(originSessionId, saved.getOriginSessionId());
-        assertEquals(prevHash, saved.getPreviousHash());
+    void senderIdNotAuthenticatedUser_ThrowsForbiddenAndSavesNothing() {
+        assertThrows(ForbiddenException.class,
+                () -> service.createPendingTransfer(request(UUID.randomUUID(), "S1", UUID.randomUUID()), UUID.randomUUID()));
+        verify(repository, never()).save(any());
+        verifyNoInteractions(recipientRepository);
     }
 
     @Test
-    void testAttachHashAndSignature_RootAlreadyClaimed_ThrowsException() {
-        UUID transferId = UUID.randomUUID();
-        UUID senderId = UUID.randomUUID();
-        MetadataPatchDto patch = new MetadataPatchDto("hash123", "sig123", "content123");
+    void recipientsAreRecordedAndEchoed() {
+        UUID sender = UUID.randomUUID();
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        when(recipientRepository.findSharesReceivedBy(any(), any())).thenReturn(List.of());
 
-        TransferMetadata pending = new TransferMetadata();
-        pending.setTransferId(transferId);
-        pending.setSenderId(senderId);
-        pending.setPreviousHash(null); // claims to be fresh
+        MetadataResponseDto res = service.createPendingTransfer(request(sender, "S1", a, b), sender);
 
-        when(repository.findById(transferId)).thenReturn(Optional.of(pending));
-        // Another transfer already claimed this content hash's root — the
-        // unique-key insert loses the race and the DB rejects it.
-        when(chainRootRepository.saveAndFlush(any(ChainRoot.class)))
-                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+        assertEquals(List.of(a, b), res.recipients());
+        verify(recipientRepository).saveAll(anyList());
+    }
 
-        assertThrows(IllegalArgumentException.class, () -> {
-            service.attachHashAndSignature(transferId, patch, senderId);
-        });
+    // ---- attachHashAndSignature ---------------------------------------------
+
+    private TransferMetadata pending(UUID sender) {
+        TransferMetadata t = new TransferMetadata();
+        t.setTransferId(UUID.randomUUID());
+        t.setSenderId(sender);
+        t.setContentHash("content-abc");
+        return t;
     }
 
     @Test
-    void testAttachHashAndSignature_NotOriginalSender_ThrowsForbidden() {
-        UUID transferId = UUID.randomUUID();
-        MetadataPatchDto patch = new MetadataPatchDto("hash123", "sig123", "content123");
+    void attach_Success_SetsFileHashAndSignature() {
+        UUID sender = UUID.randomUUID();
+        TransferMetadata t = pending(sender);
+        when(repository.findById(t.getTransferId())).thenReturn(Optional.of(t));
 
-        TransferMetadata pending = new TransferMetadata();
-        pending.setTransferId(transferId);
-        pending.setSenderId(UUID.randomUUID());
-        pending.setPreviousHash(null);
+        service.attachHashAndSignature(t.getTransferId(), new MetadataPatchDto("h", "sig", "content-abc"), sender);
 
-        when(repository.findById(transferId)).thenReturn(Optional.of(pending));
-
-        assertThrows(ForbiddenException.class, () -> {
-            service.attachHashAndSignature(transferId, patch, UUID.randomUUID());
-        });
-        verifyNoInteractions(chainRootRepository);
+        TransferMetadata saved = savedEntity();
+        assertEquals("h", saved.getFileHash());
+        assertEquals("sig", saved.getSignature());
     }
 
     @Test
-    void testAttachHashAndSignature_Success() {
-        UUID transferId = UUID.randomUUID();
-        UUID senderId = UUID.randomUUID();
-        MetadataPatchDto patch = new MetadataPatchDto("hash123", "sig123", "content123");
+    void attach_NotOriginalSender_ThrowsForbidden() {
+        TransferMetadata t = pending(UUID.randomUUID());
+        when(repository.findById(t.getTransferId())).thenReturn(Optional.of(t));
 
-        TransferMetadata pending = new TransferMetadata();
-        pending.setTransferId(transferId);
-        pending.setSenderId(senderId);
-        pending.setPreviousHash(null);
-
-        when(repository.findById(transferId)).thenReturn(Optional.of(pending));
-        when(repository.save(any(TransferMetadata.class))).thenAnswer(i -> i.getArgument(0));
-
-        MetadataResponseDto res = service.attachHashAndSignature(transferId, patch, senderId);
-
-        verify(chainRootRepository).saveAndFlush(any(ChainRoot.class));
-        ArgumentCaptor<TransferMetadata> captor = ArgumentCaptor.forClass(TransferMetadata.class);
-        verify(repository).save(captor.capture());
-        TransferMetadata saved = captor.getValue();
-
-        assertEquals("hash123", saved.getFileHash());
-        assertEquals("sig123", saved.getSignature());
-        assertEquals("content123", saved.getContentHash());
-
-        // fileHash/signature/contentHash aren't part of the response DTO's
-        // own fields, but its identity should still trace back to the same
-        // entity that got saved — same reasoning as the other test above.
-        assertEquals(saved.getTransferId(), res.transferId());
-        assertEquals(senderId, res.senderId());
+        assertThrows(ForbiddenException.class, () -> service.attachHashAndSignature(
+                t.getTransferId(), new MetadataPatchDto("h", "sig", "content-abc"), UUID.randomUUID()));
+        verify(repository, never()).save(any());
     }
+
+    @Test
+    void attach_DifferentContentHashThanDeclared_Rejected() {
+        UUID sender = UUID.randomUUID();
+        TransferMetadata t = pending(sender);
+        when(repository.findById(t.getTransferId())).thenReturn(Optional.of(t));
+
+        assertThrows(IllegalArgumentException.class, () -> service.attachHashAndSignature(
+                t.getTransferId(), new MetadataPatchDto("h", "sig", "some-other-content"), sender));
+        verify(repository, never()).save(any());
+    }
+
+    // ---- getChainHistory ----------------------------------------------------
 
     private static TransferMetadata hop(UUID transferId, UUID senderId, String fileHash, String previousHash) {
         TransferMetadata t = new TransferMetadata();
@@ -210,72 +181,54 @@ public class TransferMetadataServiceTest {
     }
 
     @Test
-    void testGetChainHistory_AttachesRecipientsAndDisplayNamesPerHop() {
+    void history_NamesSendersAndRecipients_OneLookupForEveryone() {
+        UUID charlie = UUID.randomUUID();
         UUID alice = UUID.randomUUID();
-        UUID bob = UUID.randomUUID();
-        UUID carol = UUID.randomUUID();
+        UUID dave = UUID.randomUUID();
         UUID t1 = UUID.randomUUID();
         UUID t2 = UUID.randomUUID();
+        TransferMetadata root = hop(t1, charlie, "h1", null);
+        TransferMetadata forward = hop(t2, alice, "h2", "h1");
 
-        TransferMetadata root = hop(t1, alice, "h1", null);
-        TransferMetadata forward = hop(t2, bob, "h2", "h1");
-
-        when(repository.findByContentHashOrderByTimestampAsc("content-abc")).thenReturn(List.of(root, forward));
+        when(repository.findByContentHashAndFileHashIsNotNullOrderByTimestampAsc("content-abc"))
+                .thenReturn(List.of(root, forward));
         when(recipientRepository.findByTransfer_TransferIdIn(List.of(t1, t2))).thenReturn(List.of(
-                TransferRecipient.builder().transfer(root).recipientId(bob).build(),
-                TransferRecipient.builder().transfer(forward).recipientId(carol).build()));
-        when(userLookupClient.getDisplayNames(List.of(alice, bob)))
-                .thenReturn(Map.of(alice, "Alice", bob, "Bob"));
+                TransferRecipient.builder().transfer(root).recipientId(alice).build(),
+                TransferRecipient.builder().transfer(forward).recipientId(dave).build()));
+        when(userLookupClient.getDisplayNames(anyList()))
+                .thenReturn(Map.of(charlie, "Charlie", alice, "Alice", dave, "Dave"));
 
         List<ChainHistoryResponseDto> history = service.getChainHistory("content-abc");
 
-        assertEquals(2, history.size());
-        assertEquals("Alice", history.get(0).senderDisplayName());
-        assertEquals(List.of(bob), history.get(0).recipients());
-        assertEquals("Bob", history.get(1).senderDisplayName());
-        assertEquals(List.of(carol), history.get(1).recipients());
+        assertEquals("Charlie", history.get(0).senderDisplayName());
+        assertEquals(List.of(new RecipientDto(alice, "Alice")), history.get(0).recipients());
+        assertEquals("Alice", history.get(1).senderDisplayName());
+        assertEquals("h1", history.get(1).previousHash());
+        assertEquals(List.of(new RecipientDto(dave, "Dave")), history.get(1).recipients());
+        // Alice is both a recipient and a sender — still looked up once.
+        verify(userLookupClient).getDisplayNames(List.of(charlie, alice, dave));
     }
 
     @Test
-    void testGetChainHistory_UnresolvedSender_DisplayNameIsNullNotAnError() {
+    void history_UnresolvedPeople_NamesAreNullNotAnError() {
         UUID ghost = UUID.randomUUID();
         UUID t1 = UUID.randomUUID();
         TransferMetadata root = hop(t1, ghost, "h1", null);
+        when(repository.findByContentHashAndFileHashIsNotNullOrderByTimestampAsc("content-abc")).thenReturn(List.of(root));
+        when(recipientRepository.findByTransfer_TransferIdIn(List.of(t1))).thenReturn(List.of(
+                TransferRecipient.builder().transfer(root).recipientId(ghost).build()));
+        when(userLookupClient.getDisplayNames(anyList())).thenReturn(Map.of());
 
-        when(repository.findByContentHashOrderByTimestampAsc("content-abc")).thenReturn(List.of(root));
-        when(recipientRepository.findByTransfer_TransferIdIn(List.of(t1))).thenReturn(List.of());
-        // convo-backend unreachable or user deleted — UserLookupClient
-        // fails closed to an empty map rather than throwing.
-        when(userLookupClient.getDisplayNames(List.of(ghost))).thenReturn(Map.of());
+        ChainHistoryResponseDto only = service.getChainHistory("content-abc").get(0);
 
-        List<ChainHistoryResponseDto> history = service.getChainHistory("content-abc");
-
-        assertEquals(1, history.size());
-        assertNull(history.get(0).senderDisplayName());
-        assertEquals(List.of(), history.get(0).recipients());
+        assertNull(only.senderDisplayName());
+        assertEquals(List.of(new RecipientDto(ghost, null)), only.recipients());
     }
 
     @Test
-    void testGetChainHistory_SameSenderOnMultipleHops_LookedUpOnce() {
-        UUID alice = UUID.randomUUID();
-        UUID t1 = UUID.randomUUID();
-        UUID t2 = UUID.randomUUID();
-
-        when(repository.findByContentHashOrderByTimestampAsc("content-abc"))
-                .thenReturn(List.of(hop(t1, alice, "h1", null), hop(t2, alice, "h2", "h1")));
-        when(recipientRepository.findByTransfer_TransferIdIn(any())).thenReturn(List.of());
-        when(userLookupClient.getDisplayNames(List.of(alice))).thenReturn(Map.of(alice, "Alice"));
-
-        service.getChainHistory("content-abc");
-
-        // Deduplicated before the call — one id, not the same id twice.
-        verify(userLookupClient).getDisplayNames(List.of(alice));
-    }
-
-    @Test
-    void testGetChainHistory_UnknownContent_ReturnsEmpty() {
-        when(repository.findByContentHashOrderByTimestampAsc("nothing")).thenReturn(List.of());
-        when(userLookupClient.getDisplayNames(List.of())).thenReturn(Map.of());
+    void history_UnknownContent_ReturnsEmpty() {
+        when(repository.findByContentHashAndFileHashIsNotNullOrderByTimestampAsc("nothing")).thenReturn(List.of());
+        when(userLookupClient.getDisplayNames(anyList())).thenReturn(Map.of());
 
         assertEquals(List.of(), service.getChainHistory("nothing"));
         verifyNoInteractions(recipientRepository);

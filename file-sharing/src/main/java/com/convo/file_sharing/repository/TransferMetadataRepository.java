@@ -8,7 +8,7 @@ import java.util.UUID;
 
 public interface TransferMetadataRepository extends JpaRepository<TransferMetadata, UUID> {
 
-    java.util.Optional<TransferMetadata> findByFileHash(String fileHash);
-
-    List<TransferMetadata> findByContentHashOrderByTimestampAsc(String contentHash);
+    // Completed shares only (fileHash is set by the PATCH once the client has
+    // signed). A pending row whose sender never finished is not history.
+    List<TransferMetadata> findByContentHashAndFileHashIsNotNullOrderByTimestampAsc(String contentHash);
 }

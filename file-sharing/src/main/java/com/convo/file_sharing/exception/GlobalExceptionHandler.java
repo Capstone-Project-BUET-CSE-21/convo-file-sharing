@@ -36,10 +36,9 @@ public class GlobalExceptionHandler {
     }
 
     // Safety net for any uniqueness/FK violation that reaches here without
-    // being translated to IllegalArgumentException first (e.g. a future
-    // caller of ChainRootRepository that forgets the try/catch in
-    // TransferMetadataService.claimChainRoot). Message is deliberately
-    // generic — the DB constraint name/detail shouldn't leak to clients.
+    // being translated to a more specific exception first. Message is
+    // deliberately generic — the DB constraint name/detail shouldn't leak
+    // to clients.
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, String>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         log.warn("Data integrity violation", ex);
