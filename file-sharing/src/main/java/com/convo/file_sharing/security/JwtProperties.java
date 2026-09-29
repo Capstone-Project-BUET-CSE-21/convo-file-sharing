@@ -9,8 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * an expiration-ms setting; jjwt already rejects expired tokens on parse.
  *
  * No fallback default: a default secret would be published in the repo and
- * let anyone mint a token for any user. Fails startup instead, same as
- * InternalServiceProperties.
+ * let anyone mint a token for any user. Fails startup instead.
  */
 @ConfigurationProperties(prefix = "app.jwt")
 public class JwtProperties {

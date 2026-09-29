@@ -13,10 +13,9 @@ import java.util.List;
 
 // Beyond the shared /api/file-sharing service prefix, these two endpoints
 // don't share a deeper URL prefix by design — recording a download is
-// scoped under the session it happened in (mirrors
-// SessionParticipantController's shape), while listing downloads is keyed
-// by contentHash alone, independent of any one session, mirroring how
-// getChainHistory works off contentHash too.
+// scoped under the session it happened in, while listing downloads is
+// keyed by contentHash alone, independent of any one session, mirroring
+// how getChainHistory works off contentHash too.
 @RestController
 @RequestMapping("/api/file-sharing")
 public class FileDownloadController {
